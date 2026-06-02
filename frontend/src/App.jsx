@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import ChatPanel from './components/ChatPanel'
 import PlanPanel from './components/PlanPanel'
 import Logo from './components/Logo'
 import { createSession, sendChat, approvePlan, approveSection, reviseSection, uploadFiles,
-         generateAssessments, regenerateQuiz, regenerateAssignment, exportSession } from './api'
+         generateAssessments, regenerateQuiz, regenerateAssignment, exportSession,
+         publishSession } from './api'
 
 const INIT_STATE = {
   state: 'clarifying',
@@ -23,7 +25,9 @@ export default function App() {
   const [sessionData, setSessionData] = useState(INIT_STATE)
   const [loading, setLoading]         = useState(false)
   const [error, setError]             = useState(null)
+  const [publishing, setPublishing]   = useState(false)
   const initRef = useRef(false)
+  const navigate = useNavigate()
 
   const pushMsg = (role, text, extra = {}) =>
     setMessages(prev => [...prev, { role, text, ...extra, id: Date.now() + Math.random() }])
@@ -103,6 +107,19 @@ export default function App() {
   const handleRegenerateAssignment = () =>
     withLoading(() => regenerateAssignment(sessionId))
 
+  const handlePublish = async () => {
+    setPublishing(true)
+    setError(null)
+    try {
+      await publishSession(sessionId)
+      navigate('/course-builder/generated')
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setPublishing(false)
+    }
+  }
+
   const handleExport = async () => {
     const data = await exportSession(sessionId)
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
@@ -136,13 +153,23 @@ export default function App() {
             <span className="text-xs text-red-500 max-w-xs truncate">{error}</span>
           )}
           {sessionData.state === 'done' && (
-            <button
-              onClick={handleExport}
-              className="px-4 py-1.5 bg-brand-600 text-white rounded-lg text-sm font-medium
-                hover:bg-brand-700 transition-colors"
-            >
-              Export JSON
-            </button>
+            <>
+              <button
+                onClick={handlePublish}
+                disabled={publishing}
+                className="px-4 py-1.5 bg-brand-600 text-white rounded-lg text-sm font-medium
+                  hover:bg-brand-700 transition-colors disabled:opacity-50"
+              >
+                {publishing ? 'Publishing…' : 'Publish'}
+              </button>
+              <button
+                onClick={handleExport}
+                className="px-3 py-1.5 bg-white text-gray-700 border border-gray-200 rounded-lg text-sm font-medium
+                  hover:bg-gray-50 transition-colors"
+              >
+                Download backup
+              </button>
+            </>
           )}
         </div>
       </nav>

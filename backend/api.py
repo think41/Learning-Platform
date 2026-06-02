@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from agent import PlanningAgent
 from generator import (generate_section, run_critic, generate_quiz,
                        generate_final_assignment, summarize_section)
+import db
 from store import PlanStore, SectionStore
 from models import GeneratedSection, SectionStatus
 from parser import extract_json
@@ -43,6 +44,7 @@ def clean_reply(text: str) -> str:
     return cleaned.strip()
 
 app = FastAPI(title="Learning Platform API")
+db.init_db()
 
 app.add_middleware(
     CORSMiddleware,
@@ -457,3 +459,42 @@ async def export_session(sid: str):
         "quizzes":          session.get("quizzes", []),
         "final_assignment": session.get("final_assignment"),
     }
+
+
+@app.post("/session/{sid}/publish")
+async def publish_session(sid: str):
+    if sid not in sessions:
+        raise HTTPException(404, "Session not found")
+    session = sessions[sid]
+    if session["state"] != STATE_DONE:
+        raise HTTPException(400, "Course is not finished — finish content + assessments before publishing")
+
+    ps = session["plan_store"]
+    ss = session["section_store"]
+    plan = ps._raw or {}
+    sections = {sid_: _sec_dict(s) for sid_, s in ss.sections.items()}
+
+    course_id = db.save_course(
+        title=plan.get("title", "Untitled course"),
+        description=plan.get("description", ""),
+        total_duration_hours=float(plan.get("total_duration_hours") or 0),
+        plan=plan,
+        sections=sections,
+        quizzes=session.get("quizzes", []),
+        final_assignment=session.get("final_assignment") or {},
+    )
+    db.write_manuscript(course_id, plan.get("title", "Untitled course"), sections)
+    return {"course_id": course_id, "title": plan.get("title", "Untitled course")}
+
+
+@app.get("/courses")
+async def list_courses():
+    return {"courses": db.list_courses()}
+
+
+@app.get("/courses/{course_id}")
+async def get_course(course_id: str):
+    course = db.get_course(course_id)
+    if not course:
+        raise HTTPException(404, "Course not found")
+    return course
