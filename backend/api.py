@@ -14,7 +14,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from agent import PlanningAgent
-from generator import generate_section, run_critic, generate_quiz, generate_final_assignment
+from generator import (generate_section, run_critic, generate_quiz,
+                       generate_final_assignment, summarize_section)
 from store import PlanStore, SectionStore
 from models import GeneratedSection, SectionStatus
 from parser import extract_json
@@ -87,6 +88,7 @@ def _sec_dict(s) -> dict:
         "content":              s.content,
         "concepts_introduced":  s.concepts_introduced,
         "status":               s.status.value,
+        "summary":              s.summary,
         "critic": {
             "flagged_claims":        s.critic_report.flagged_claims,
             "out_of_order_concepts": s.critic_report.out_of_order_concepts,
@@ -127,7 +129,7 @@ def _build_section(session: dict) -> GeneratedSection:
     b      = briefs[idx]
 
     content, concepts = generate_section(
-        ps.plan, b, ss.concepts_introduced, ss.get_summary(), ref
+        ps.plan, b, ss.concepts_introduced, ss.prior_summaries_block(), ref
     )
     sid    = f"m{b.module_number}_s{b.submodule_index}"
     critic = run_critic(content, b, ss.concepts_introduced, ps.plan)
@@ -195,6 +197,11 @@ async def _do_approve_section(session_id: str) -> dict:
     if not cs:
         return {"reply": "No section to approve.", **serialize(session)}
 
+    briefs = session["briefs"]
+    idx    = session["brief_index"]
+    module_title = briefs[idx].module_title if idx < len(briefs) else cs.title
+    cs.summary = await run(summarize_section, cs.title, module_title, cs.content)
+
     session["section_store"].add(cs)
     session["section_store"].approve_section(cs.id)
     session["brief_index"] += 1
@@ -232,7 +239,7 @@ async def _do_revise(session_id: str, feedback: str) -> dict:
         content, concepts = generate_section(
             session["plan_store"].plan, b,
             session["section_store"].concepts_introduced,
-            session["section_store"].get_summary(), aug,
+            session["section_store"].prior_summaries_block(), aug,
         )
         sid2   = f"m{b.module_number}_s{b.submodule_index}"
         critic = run_critic(content, b, session["section_store"].concepts_introduced, session["plan_store"].plan)

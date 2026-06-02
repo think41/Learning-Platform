@@ -7,17 +7,42 @@ from dotenv import load_dotenv
 from llm import get_llm
 from models import CriticReport, ApprovedPlan, SectionBrief
 from prompts import (build_section_prompt, build_critic_prompt,
-                     build_quiz_prompt, build_final_assignment_prompt)
+                     build_quiz_prompt, build_final_assignment_prompt,
+                     build_summary_prompt, build_trim_prompt,
+                     SECTION_WORD_CAP, SECTION_WORD_GRACE)
 from parser import extract_json
 
 load_dotenv()
+
+
+def _word_count(text: str) -> int:
+    return len(text.split())
+
+
+def _trim_to_cap(content: str) -> str:
+    """If content exceeds cap+grace, do one LLM trim pass. Otherwise return as-is."""
+    wc = _word_count(content)
+    if wc <= SECTION_WORD_CAP + SECTION_WORD_GRACE:
+        return content
+    raw = get_llm().complete(
+        [
+            {"role": "system", "content": "You are a precise editor. Output ONLY the requested JSON — no preamble."},
+            {"role": "user", "content": build_trim_prompt(content, wc)},
+        ],
+        temperature=0.3,
+        max_tokens=4096,
+    )
+    data = extract_json(raw)
+    if data and "content" in data:
+        return data["content"]
+    return content  # trim failed — accept the original rather than loop
 
 
 def generate_section(
     plan: ApprovedPlan,
     brief: SectionBrief,
     concepts_so_far: List[str],
-    sections_summary: str,
+    prior_summaries: str,
     reference_material: str = "",
 ) -> Tuple[str, List[str]]:
     """
@@ -25,7 +50,7 @@ def generate_section(
     Returns (content_markdown, concepts_introduced).
     Each call is independent — no reliance on conversation thread.
     """
-    prompt = build_section_prompt(plan, brief, concepts_so_far, sections_summary, reference_material)
+    prompt = build_section_prompt(plan, brief, concepts_so_far, prior_summaries, reference_material)
     raw = get_llm().complete(
         [
             {
@@ -39,8 +64,23 @@ def generate_section(
     )
     data = extract_json(raw)
     if data and "content" in data:
-        return data["content"], data.get("concepts_introduced", [])
+        content = _trim_to_cap(data["content"])
+        return content, data.get("concepts_introduced", [])
     return raw, []
+
+
+def summarize_section(section_title: str, module_title: str, section_content: str) -> str:
+    """~100-word dense paragraph used as forward context for later section generation."""
+    prompt = build_summary_prompt(section_title, module_title, section_content)
+    raw = get_llm().complete(
+        [
+            {"role": "system", "content": "You are a concise summarizer. Output only the paragraph — no preamble, no markdown."},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.3,
+        max_tokens=400,
+    )
+    return raw.strip()
 
 
 def run_critic(

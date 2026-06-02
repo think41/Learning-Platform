@@ -13,3 +13,5 @@ frontend/dist/
 
 # Editor / tooling
 .jetro/
+
+private-docs/

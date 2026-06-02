@@ -6,6 +6,11 @@ MAX_CLARIFICATION_ROUNDS = 2
 MAX_MODULES = 4
 MAX_SUBMODULES_PER_MODULE = 2
 
+# Section length controls
+SECTION_WORD_CAP = 1000       # hard cap; prompt-enforced + verified in code
+SECTION_WORD_GRACE = 100      # allow up to cap+grace before forcing a trim
+SUMMARY_WORD_TARGET = 100     # target length for per-section forward-context summary
+
 # ─── Plan schema shown to the planning agent ────────────────────────────────
 
 PLAN_SCHEMA = """{
@@ -123,7 +128,7 @@ def build_section_prompt(
     plan,
     brief,
     concepts_so_far: List[str],
-    sections_summary: str,
+    prior_summaries: str,
     reference_material: str = "",
 ) -> str:
     concepts_block = (
@@ -131,6 +136,7 @@ def build_section_prompt(
         if concepts_so_far
         else "  (none — this is the first section)"
     )
+    summaries_block = prior_summaries.strip() or "(none — this is the first section)"
     ref_block = (
         f"\n## REFERENCE MATERIAL (treat as primary source)\n{reference_material}"
         if reference_material
@@ -151,8 +157,9 @@ Course-wide prior knowledge: {', '.join(plan.assumed_prior_knowledge) or 'none s
 Do NOT re-explain these. Treat them as known.
 {concepts_block}
 
-## SECTIONS GENERATED SO FAR
-{sections_summary}
+## SUMMARIES OF PRIOR APPROVED SECTIONS
+Use these for narrative continuity, consistent vocabulary, and to avoid repeating examples or explanations already given. Build on what's here.
+{summaries_block}
 {ref_block}
 
 ## YOUR TASK — generate content for this section ONLY
@@ -164,7 +171,8 @@ Concepts to introduce: {', '.join(brief.concepts_to_cover) or 'derive from modul
 Learning objectives: {', '.join(brief.learning_objectives) or 'derive from module context'}
 
 Rules:
-- Write thorough, well-structured markdown content.
+- HARD CAP: section content must be at most {SECTION_WORD_CAP} words. Be tight. Cut filler before adding more.
+- Write well-structured markdown content.
 - Match tone and vocabulary rules exactly.
 - Do NOT reference concepts that will only appear in later sections.
 - Do NOT re-explain concepts from the "already introduced" list.
@@ -175,6 +183,49 @@ Output ONLY this JSON (no text before or after the block):
 {{
   "content": "full markdown content of the section",
   "concepts_introduced": ["concept1", "concept2"]
+}}
+```"""
+
+
+# ─── Summary prompt (per-section, used as forward context) ───────────────────
+
+def build_summary_prompt(section_title: str, module_title: str, section_content: str) -> str:
+    return f"""Summarize the course section below for use as forward context when later sections are generated.
+
+## SECTION
+Module : {module_title}
+Title  : {section_title}
+
+## CONTENT
+{section_content}
+
+## YOUR TASK
+Write a single dense paragraph of about {SUMMARY_WORD_TARGET} words covering:
+- The key concepts taught (named exactly as the section named them).
+- Any worked example(s) used, briefly.
+- Any vocabulary or analogies the section relied on that later sections should stay consistent with.
+
+No headings, no bullet lists, no preamble. Just the paragraph."""
+
+
+# ─── Trim prompt (when a section exceeds the word cap) ───────────────────────
+
+def build_trim_prompt(section_content: str, current_words: int) -> str:
+    return f"""The course section below is {current_words} words. Trim it to at most {SECTION_WORD_CAP} words.
+
+## RULES
+- Preserve all key concepts, code examples, and the overall structure / headings.
+- Remove filler, repetition, and over-elaboration. Tighten prose.
+- Do NOT drop entire concepts or examples.
+- Keep the same markdown formatting.
+
+## CONTENT TO TRIM
+{section_content}
+
+Output ONLY this JSON (no text before or after):
+```json
+{{
+  "content": "trimmed markdown content"
 }}
 ```"""
 
