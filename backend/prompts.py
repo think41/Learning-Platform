@@ -284,11 +284,26 @@ Output ONLY this JSON:
 
 # ─── Quiz prompt (one per module) ────────────────────────────────────────────
 
-QUIZ_QUESTIONS = 5
+QUIZ_QUESTIONS = 4
 
-def build_quiz_prompt(plan, module_number: int, module_title: str, module_content: str, concepts: List[str]) -> str:
+def build_quiz_prompt(
+    plan,
+    module_number: int,
+    module_title: str,
+    module_content: str,
+    concepts: List[str],
+    prior_issues: List[str] | None = None,
+) -> str:
     style_block = format_style_block(plan.style)
     concepts_block = ", ".join(concepts) or "the concepts taught in this module"
+    fix_block = ""
+    if prior_issues:
+        issues_lines = "\n".join(f"  - {i}" for i in prior_issues)
+        fix_block = (
+            f"\n## PREVIOUS ATTEMPT FAILED VALIDATION — FIX THESE ISSUES\n"
+            f"{issues_lines}\n"
+            f"Regenerate the quiz so that NONE of the above issues recur.\n"
+        )
     return f"""You are an expert assessment designer. Write a quiz for ONE module of a course, based strictly on what that module taught.
 
 ## COURSE
@@ -301,12 +316,21 @@ Concepts covered: {concepts_block}
 
 ## MODULE CONTENT (the only material the quiz may test)
 {module_content}
-
+{fix_block}
 ## YOUR TASK
 Write exactly {QUIZ_QUESTIONS} questions that test understanding of THIS module only.
-- Mix of "multiple_choice" (4 options each) and "short_answer".
-- For multiple_choice, "answer" must be the exact text of the correct option.
-- For short_answer, "answer" is a concise model answer; "options" must be an empty list.
+
+STRICT RULES:
+- Question types: "multiple_choice" (exactly 4 options) and "short_answer" (empty options list).
+- Include AT LEAST 1 multiple_choice and AT LEAST 1 short_answer question.
+- For multiple_choice:
+  - "answer" must be the EXACT text of one of the options (character-for-character).
+  - Exactly ONE option is correct. No other option may be a paraphrase, synonym, or restatement of the correct answer.
+  - All distractors must be defensibly wrong — plausible but verifiably incorrect against the module content.
+  - All 4 options must be unique non-empty strings.
+- For short_answer: "options" must be []; "answer" is a concise model answer.
+- Every question must have a non-empty "explanation".
+- Across the {QUIZ_QUESTIONS} questions, cover at least 2 different concepts from the list.
 - Only test material actually present in the module content above. Do not invent facts.
 - Match the audience reading level and tone.
 
@@ -337,10 +361,16 @@ Output ONLY this JSON (no text before or after):
 
 # ─── Final assignment prompt (one per course) ────────────────────────────────
 
-def build_final_assignment_prompt(plan, sections_summary: str, concepts: List[str]) -> str:
+def build_final_assignment_prompt(
+    plan,
+    sections_summary: str,
+    concepts: List[str],
+    prior_summaries: str = "",
+) -> str:
     style_block = format_style_block(plan.style)
     objectives = "\n".join(f"  - {o}" for o in plan.learning_objectives) or "  - (derive from the course)"
     concepts_block = ", ".join(concepts) or "the concepts taught across the course"
+    summaries_block = prior_summaries.strip() or "(no detailed summaries available)"
     return f"""You are an expert instructional designer. Design ONE capstone final assignment for the whole course.
 
 ## COURSE
@@ -355,8 +385,12 @@ Description: {plan.description}
 ## ALL CONCEPTS TAUGHT
 {concepts_block}
 
-## SECTIONS COVERED
+## SECTIONS COVERED (structure)
 {sections_summary}
+
+## WHAT EACH SECTION ACTUALLY TAUGHT
+Ground the assignment in what was actually covered. Do NOT assume content beyond what appears below.
+{summaries_block}
 
 ## YOUR TASK
 Design a single, cohesive capstone assignment that requires applying concepts from across the WHOLE course

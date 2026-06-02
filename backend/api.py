@@ -129,7 +129,7 @@ def _build_section(session: dict) -> GeneratedSection:
     b      = briefs[idx]
 
     content, concepts = generate_section(
-        ps.plan, b, ss.concepts_introduced, ss.prior_summaries_block(), ref
+        ps.plan, b, ss.concepts_introduced, ss.approved_summaries_block(), ref
     )
     sid    = f"m{b.module_number}_s{b.submodule_index}"
     critic = run_critic(content, b, ss.concepts_introduced, ps.plan)
@@ -163,7 +163,10 @@ def _build_quiz(session: dict, module) -> dict:
 def _build_final_assignment(session: dict) -> dict:
     ss = session["section_store"]
     return generate_final_assignment(
-        session["plan_store"].plan, ss.get_summary(), ss.concepts_introduced
+        session["plan_store"].plan,
+        ss.get_summary(),
+        ss.concepts_introduced,
+        ss.approved_summaries_block(),
     )
 
 
@@ -239,7 +242,7 @@ async def _do_revise(session_id: str, feedback: str) -> dict:
         content, concepts = generate_section(
             session["plan_store"].plan, b,
             session["section_store"].concepts_introduced,
-            session["section_store"].prior_summaries_block(), aug,
+            session["section_store"].approved_summaries_block(), aug,
         )
         sid2   = f"m{b.module_number}_s{b.submodule_index}"
         critic = run_critic(content, b, session["section_store"].concepts_introduced, session["plan_store"].plan)

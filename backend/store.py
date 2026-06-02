@@ -153,7 +153,7 @@ class SectionStore:
             for s in self.sections.values()
         )
 
-    def prior_summaries_block(self) -> str:
+    def approved_summaries_block(self) -> str:
         """Approved-section summaries, formatted for the next section's prompt."""
         approved = [s for s in self.sections.values()
                     if s.status == SectionStatus.APPROVED and s.summary]

@@ -139,9 +139,60 @@ def generate_ppt_slides(section_content: str, section_title: str, style) -> dict
     return extract_json(raw) or {}
 
 
-def generate_quiz(plan, module_number, module_title, module_content, concepts):
-    """Stateless: generate one quiz (JSON dict) for a single module."""
-    prompt = build_quiz_prompt(plan, module_number, module_title, module_content, concepts)
+def _validate_quiz(data: dict, expected_n: int) -> list[str]:
+    """Return a list of structural issues. Empty list = passed."""
+    issues: list[str] = []
+    questions = data.get("questions") if isinstance(data, dict) else None
+    if not isinstance(questions, list):
+        return ["Response missing a 'questions' array."]
+    if len(questions) != expected_n:
+        issues.append(f"Expected {expected_n} questions, got {len(questions)}.")
+
+    types_seen = set()
+    for i, q in enumerate(questions, 1):
+        if not isinstance(q, dict):
+            issues.append(f"Q{i}: not a JSON object.")
+            continue
+        qtext       = (q.get("question") or "").strip()
+        qtype       = q.get("type", "")
+        answer      = q.get("answer", "")
+        options     = q.get("options", [])
+        explanation = (q.get("explanation") or "").strip()
+        answer_str  = answer.strip() if isinstance(answer, str) else ""
+
+        if not qtext:       issues.append(f"Q{i}: empty question text.")
+        if not answer_str:  issues.append(f"Q{i}: empty answer.")
+        if not explanation: issues.append(f"Q{i}: missing explanation.")
+
+        types_seen.add(qtype)
+
+        if qtype == "multiple_choice":
+            if not isinstance(options, list) or len(options) != 4:
+                issues.append(f"Q{i}: multiple_choice must have exactly 4 options.")
+                continue
+            stripped = [o.strip() if isinstance(o, str) else "" for o in options]
+            if any(not o for o in stripped):
+                issues.append(f"Q{i}: options contain empty strings.")
+            if len(set(stripped)) != len(stripped):
+                issues.append(f"Q{i}: options contain duplicates.")
+            if answer_str and answer_str not in stripped:
+                issues.append(f"Q{i}: answer {answer_str!r} is not an exact match of any option.")
+        elif qtype == "short_answer":
+            if options:
+                issues.append(f"Q{i}: short_answer must have an empty options list.")
+        else:
+            issues.append(f"Q{i}: type must be 'multiple_choice' or 'short_answer', got {qtype!r}.")
+
+    if questions and "multiple_choice" not in types_seen:
+        issues.append("Quiz must include at least one multiple_choice question.")
+    if questions and "short_answer" not in types_seen:
+        issues.append("Quiz must include at least one short_answer question.")
+
+    return issues
+
+
+def _quiz_llm_call(plan, module_number, module_title, module_content, concepts, prior_issues=None):
+    prompt = build_quiz_prompt(plan, module_number, module_title, module_content, concepts, prior_issues)
     raw = get_llm().complete(
         [
             {"role": "system", "content": "You are an expert assessment designer. Output ONLY the requested JSON — no preamble."},
@@ -150,15 +201,37 @@ def generate_quiz(plan, module_number, module_title, module_content, concepts):
         temperature=0.4,
         max_tokens=2048,
     )
-    data = extract_json(raw)
-    if data and "questions" in data:
-        return data
-    return {"module_number": module_number, "module_title": module_title, "questions": []}
+    return extract_json(raw)
 
 
-def generate_final_assignment(plan, sections_summary, concepts):
+def generate_quiz(plan, module_number, module_title, module_content, concepts):
+    """Generate one quiz for a single module, with one validation-retry on failure."""
+    from prompts import QUIZ_QUESTIONS
+    data = _quiz_llm_call(plan, module_number, module_title, module_content, concepts) or {}
+    issues = _validate_quiz(data, QUIZ_QUESTIONS)
+    if issues:
+        retry = _quiz_llm_call(plan, module_number, module_title, module_content, concepts, prior_issues=issues) or {}
+        retry_issues = _validate_quiz(retry, QUIZ_QUESTIONS)
+        if not retry_issues:
+            retry["validated"] = True
+            retry["validation_issues"] = []
+            return retry
+        # both attempts failed — return the second one, flagged
+        retry["validated"] = False
+        retry["validation_issues"] = retry_issues
+        retry.setdefault("module_number", module_number)
+        retry.setdefault("module_title", module_title)
+        retry.setdefault("questions", [])
+        return retry
+
+    data["validated"] = True
+    data["validation_issues"] = []
+    return data
+
+
+def generate_final_assignment(plan, sections_summary, concepts, prior_summaries=""):
     """Stateless: generate one capstone final assignment (JSON dict) for the course."""
-    prompt = build_final_assignment_prompt(plan, sections_summary, concepts)
+    prompt = build_final_assignment_prompt(plan, sections_summary, concepts, prior_summaries)
     raw = get_llm().complete(
         [
             {"role": "system", "content": "You are an expert instructional designer. Output ONLY the requested JSON — no preamble."},
