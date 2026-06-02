@@ -1,11 +1,9 @@
 import os
-from groq import Groq
 from dotenv import load_dotenv
+from llm import get_llm
 from prompts import PLANNING_SYSTEM, planning_context, MAX_CLARIFICATION_ROUNDS
 
 load_dotenv()
-
-MODEL = "llama-3.3-70b-versatile"
 
 
 class PlanningAgent:
@@ -16,10 +14,7 @@ class PlanningAgent:
     """
 
     def __init__(self):
-        api_key = os.getenv("GROQ_API_KEY")
-        if not api_key:
-            raise ValueError("GROQ_API_KEY not set — copy .env.example to .env and add your key.")
-        self.client = Groq(api_key=api_key)
+        self._llm = get_llm()
         self.messages = [{"role": "system", "content": PLANNING_SYSTEM}]
         self._rounds_used = 0
         self._pending_upload = ""
@@ -42,13 +37,7 @@ class PlanningAgent:
         self.messages.append({"role": "user", "content": content})
         self._rounds_used += 1
 
-        response = self.client.chat.completions.create(
-            model=MODEL,
-            messages=self.messages,
-            temperature=0.7,
-            max_tokens=4096,
-        )
-        reply = response.choices[0].message.content
+        reply = self._llm.complete(self.messages, temperature=0.7, max_tokens=4096)
         self.messages.append({"role": "assistant", "content": reply})
         return reply
 

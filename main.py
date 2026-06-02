@@ -49,7 +49,7 @@ CONVERSATION KEYWORDS
 def banner():
     print(f"\n{DIVIDER}")
     print("  AI Learning Platform — Structured Course Builder")
-    print(f"{DIVIDER}{HELP}")
+    print(f"{DIVIDER}")
 
 
 def show_critic(report):

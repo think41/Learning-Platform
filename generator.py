@@ -2,21 +2,14 @@
 Stateless generation functions — no thread dependency.
 Every call receives the full context it needs: approved plan + concepts so far + section brief.
 """
-import os
 from typing import Tuple, List
-from groq import Groq
 from dotenv import load_dotenv
+from llm import get_llm
 from models import CriticReport, ApprovedPlan, SectionBrief
 from prompts import build_section_prompt, build_critic_prompt
 from parser import extract_json
 
 load_dotenv()
-
-MODEL = "llama-3.3-70b-versatile"
-
-
-def _client() -> Groq:
-    return Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 
 def generate_section(
@@ -32,9 +25,8 @@ def generate_section(
     Each call is independent — no reliance on conversation thread.
     """
     prompt = build_section_prompt(plan, brief, concepts_so_far, sections_summary, reference_material)
-    response = _client().chat.completions.create(
-        model=MODEL,
-        messages=[
+    raw = get_llm().complete(
+        [
             {
                 "role": "system",
                 "content": "You are an expert technical writer and educator. Output ONLY the requested JSON — no preamble, no commentary.",
@@ -44,11 +36,9 @@ def generate_section(
         temperature=0.7,
         max_tokens=4096,
     )
-    raw = response.choices[0].message.content
     data = extract_json(raw)
     if data and "content" in data:
         return data["content"], data.get("concepts_introduced", [])
-    # Fallback: treat entire response as content
     return raw, []
 
 
@@ -64,9 +54,8 @@ def run_critic(
     Outputs a structured CriticReport, not free text.
     """
     prompt = build_critic_prompt(section_content, brief, concepts_so_far, plan)
-    response = _client().chat.completions.create(
-        model=MODEL,
-        messages=[
+    raw = get_llm().complete(
+        [
             {
                 "role": "system",
                 "content": "You are a strict quality reviewer. Output ONLY the requested JSON — no preamble, no commentary.",
@@ -76,7 +65,6 @@ def run_critic(
         temperature=0.2,
         max_tokens=1024,
     )
-    raw = response.choices[0].message.content
     data = extract_json(raw)
     if data:
         return CriticReport(
@@ -103,9 +91,8 @@ def generate_ppt_slides(section_content: str, section_title: str, style) -> dict
         f'{{"slide_number":1,"title":"...","content":["bullet 1","bullet 2"],"speaker_notes":"..."}}'
         f"]}}"
     )
-    response = _client().chat.completions.create(
-        model=MODEL,
-        messages=[{"role": "user", "content": prompt}],
+    raw = get_llm().complete(
+        [{"role": "user", "content": prompt}],
         max_tokens=3000,
     )
-    return extract_json(response.choices[0].message.content) or {}
+    return extract_json(raw) or {}

@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+/* Markdown prose styles */
+.prose h1 { @apply text-2xl font-bold text-gray-900 mt-6 mb-3; }
+.prose h2 { @apply text-xl font-semibold text-gray-900 mt-5 mb-2; }
+.prose h3 { @apply text-lg font-semibold text-gray-800 mt-4 mb-2; }
+.prose p  { @apply text-gray-700 leading-relaxed mb-4; }
+.prose ul { @apply list-disc list-outside ml-5 mb-4 space-y-1; }
+.prose ol { @apply list-decimal list-outside ml-5 mb-4 space-y-1; }
+.prose li { @apply text-gray-700 leading-relaxed; }
+.prose strong { @apply font-semibold text-gray-900; }
+.prose em { @apply italic; }
+.prose code { @apply bg-gray-100 text-blue-700 px-1.5 py-0.5 rounded text-sm font-mono; }
+.prose pre  { @apply bg-gray-900 rounded-lg p-4 overflow-x-auto mb-4; }
+.prose pre code { @apply bg-transparent text-gray-100 p-0; }
+.prose blockquote {
+  @apply border-l-4 border-blue-300 pl-4 italic text-gray-600 my-4;
+}
+.prose a { @apply text-blue-600 hover:underline; }
+.prose table { @apply w-full border-collapse mb-4; }
+.prose th { @apply border border-gray-200 bg-gray-50 px-4 py-2 text-left font-semibold text-gray-700; }
+.prose td { @apply border border-gray-200 px-4 py-2 text-gray-700; }
+.prose hr { @apply border-gray-200 my-6; }
+
+/* Custom scrollbar */
+::-webkit-scrollbar       { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+
+/* Bounce dots animation */
+@keyframes bounce-dot {
+  0%, 60%, 100% { transform: translateY(0); }
+  30%           { transform: translateY(-6px); }
+}
+.dot-1 { animation: bounce-dot 1.2s ease-in-out infinite; }
+.dot-2 { animation: bounce-dot 1.2s ease-in-out 0.2s infinite; }
+.dot-3 { animation: bounce-dot 1.2s ease-in-out 0.4s infinite; }

@@ -3,3 +3,13 @@ output/
 __pycache__/
 *.pyc
 *.pptx
+
+# Python virtual environment
+venv/
+
+# Node / frontend
+node_modules/
+frontend/dist/
+
+# Editor / tooling
+.jetro/
