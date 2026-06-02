@@ -27,11 +27,27 @@ export const approveSection = (sid) =>
 export const reviseSection = (sid, feedback) =>
   req(`${BASE}/${sid}/revise`, { method: 'POST', body: JSON.stringify({ feedback }) })
 
-export const uploadFile = (sid, file) => {
+export const uploadFiles = (sid, files, message = '') => {
   const form = new FormData()
-  form.append('file', file)
-  return fetch(`${BASE}/${sid}/upload`, { method: 'POST', body: form }).then(r => r.json())
+  for (const f of files) form.append('files', f)
+  form.append('message', message)
+  return fetch(`${BASE}/${sid}/upload`, { method: 'POST', body: form }).then(async r => {
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({ detail: r.statusText }))
+      throw new Error(err.detail || 'Upload failed')
+    }
+    return r.json()
+  })
 }
+
+export const generateAssessments = (sid) =>
+  req(`${BASE}/${sid}/generate-assessments`, { method: 'POST' })
+
+export const regenerateQuiz = (sid, moduleNumber) =>
+  req(`${BASE}/${sid}/regenerate-quiz/${moduleNumber}`, { method: 'POST' })
+
+export const regenerateAssignment = (sid) =>
+  req(`${BASE}/${sid}/regenerate-assignment`, { method: 'POST' })
 
 export const exportSession = (sid) =>
   req(`${BASE}/${sid}/export`)

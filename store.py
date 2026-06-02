@@ -2,6 +2,17 @@ import json
 from typing import Dict, List, Optional
 from models import (ApprovedPlan, GeneratedSection, SectionStatus,
                     StyleBlock, Module, Submodule, SectionBrief)
+from prompts import MAX_MODULES, MAX_SUBMODULES_PER_MODULE
+
+
+def _enforce_limits(plan_dict: dict) -> dict:
+    """Hard-cap modules and submodules in case the LLM ignores the prompt limits."""
+    modules = plan_dict.get("modules", [])[:MAX_MODULES]
+    for m in modules:
+        if "submodules" in m:
+            m["submodules"] = m["submodules"][:MAX_SUBMODULES_PER_MODULE]
+    plan_dict["modules"] = modules
+    return plan_dict
 
 
 class PlanStore:
@@ -12,6 +23,7 @@ class PlanStore:
     def approve(self, plan_dict: dict) -> ApprovedPlan:
         """Store and version an approved plan dict from the LLM."""
         version = (self.plan.version + 1) if self.plan else 1
+        plan_dict = _enforce_limits(plan_dict)
         plan_dict["version"] = version
         self._raw = plan_dict
         self.plan = self._parse(plan_dict)

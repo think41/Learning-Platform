@@ -6,7 +6,8 @@ from typing import Tuple, List
 from dotenv import load_dotenv
 from llm import get_llm
 from models import CriticReport, ApprovedPlan, SectionBrief
-from prompts import build_section_prompt, build_critic_prompt
+from prompts import (build_section_prompt, build_critic_prompt,
+                     build_quiz_prompt, build_final_assignment_prompt)
 from parser import extract_json
 
 load_dotenv()
@@ -96,3 +97,37 @@ def generate_ppt_slides(section_content: str, section_title: str, style) -> dict
         max_tokens=3000,
     )
     return extract_json(raw) or {}
+
+
+def generate_quiz(plan, module_number, module_title, module_content, concepts):
+    """Stateless: generate one quiz (JSON dict) for a single module."""
+    prompt = build_quiz_prompt(plan, module_number, module_title, module_content, concepts)
+    raw = get_llm().complete(
+        [
+            {"role": "system", "content": "You are an expert assessment designer. Output ONLY the requested JSON — no preamble."},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.4,
+        max_tokens=2048,
+    )
+    data = extract_json(raw)
+    if data and "questions" in data:
+        return data
+    return {"module_number": module_number, "module_title": module_title, "questions": []}
+
+
+def generate_final_assignment(plan, sections_summary, concepts):
+    """Stateless: generate one capstone final assignment (JSON dict) for the course."""
+    prompt = build_final_assignment_prompt(plan, sections_summary, concepts)
+    raw = get_llm().complete(
+        [
+            {"role": "system", "content": "You are an expert instructional designer. Output ONLY the requested JSON — no preamble."},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.5,
+        max_tokens=2048,
+    )
+    data = extract_json(raw)
+    if data and "title" in data:
+        return data
+    return {}

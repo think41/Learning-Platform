@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import ChatPanel from './components/ChatPanel'
 import PlanPanel from './components/PlanPanel'
-import { createSession, sendChat, approvePlan, approveSection, reviseSection, uploadFile, exportSession } from './api'
+import Logo from './components/Logo'
+import { createSession, sendChat, approvePlan, approveSection, reviseSection, uploadFiles,
+         generateAssessments, regenerateQuiz, regenerateAssignment, exportSession } from './api'
 
 const INIT_STATE = {
   state: 'clarifying',
@@ -10,6 +12,9 @@ const INIT_STATE = {
   current_section: null,
   brief_index: 0,
   total_briefs: 0,
+  uploaded_files: [],
+  quizzes: [],
+  final_assignment: null,
 }
 
 export default function App() {
@@ -20,8 +25,8 @@ export default function App() {
   const [error, setError]             = useState(null)
   const initRef = useRef(false)
 
-  const pushMsg = (role, text) =>
-    setMessages(prev => [...prev, { role, text, id: Date.now() + Math.random() }])
+  const pushMsg = (role, text, extra = {}) =>
+    setMessages(prev => [...prev, { role, text, ...extra, id: Date.now() + Math.random() }])
 
   const applyResponse = (data) => {
     if (data.reply) pushMsg('assistant', data.reply)
@@ -32,6 +37,9 @@ export default function App() {
       current_section: data.current_section,
       brief_index:     data.brief_index,
       total_briefs:    data.total_briefs,
+      uploaded_files:  data.uploaded_files || [],
+      quizzes:          data.quizzes || [],
+      final_assignment: data.final_assignment || null,
     })
   }
 
@@ -63,9 +71,10 @@ export default function App() {
     withLoading(() => sendChat(sessionId, message))
   }
 
-  const handleUpload = (file) => {
-    pushMsg('user', `📎 ${file.name}`)
-    withLoading(() => uploadFile(sessionId, file))
+  const handleUpload = (files, message = '') => {
+    const names = Array.from(files).map(f => f.name)
+    pushMsg('user', message, { files: names })
+    withLoading(() => uploadFiles(sessionId, files, message))
   }
 
   const handleApprovePlan = () => {
@@ -83,6 +92,17 @@ export default function App() {
     withLoading(() => reviseSection(sessionId, feedback))
   }
 
+  const handleGenerateAssessments = () => {
+    pushMsg('user', 'Generate assessments')
+    withLoading(() => generateAssessments(sessionId))
+  }
+
+  const handleRegenerateQuiz = (moduleNumber) =>
+    withLoading(() => regenerateQuiz(sessionId, moduleNumber))
+
+  const handleRegenerateAssignment = () =>
+    withLoading(() => regenerateAssignment(sessionId))
+
   const handleExport = async () => {
     const data = await exportSession(sessionId)
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
@@ -97,17 +117,15 @@ export default function App() {
   const disabled = !sessionId || loading
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
+    <div className="flex flex-col h-screen bg-cream">
       {/* Navbar */}
       <nav className="bg-white border-b border-gray-200 px-6 h-14 flex items-center justify-between shrink-0 z-10">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center shrink-0">
-            <span className="text-white text-xs font-bold">CB</span>
-          </div>
-          <span className="font-semibold text-gray-900">CourseBuilder AI</span>
+          <Logo size={32} />
+          <span className="font-semibold text-gray-900">CourseBuilder</span>
           {sessionData.state !== 'clarifying' && (
             <span className="text-xs px-2 py-0.5 rounded-full font-medium
-              bg-blue-50 text-blue-700 border border-blue-100 capitalize">
+              bg-brand-50 text-brand-700 border border-brand-100 capitalize">
               {sessionData.state.replace('_', ' ')}
             </span>
           )}
@@ -136,6 +154,7 @@ export default function App() {
           loading={loading}
           sessionState={sessionData.state}
           hasPlan={!!sessionData.plan}
+          uploadedFiles={sessionData.uploaded_files}
           onSend={handleSend}
           onUpload={handleUpload}
           disabled={disabled}
@@ -146,6 +165,9 @@ export default function App() {
           onApprovePlan={handleApprovePlan}
           onApproveSection={handleApproveSection}
           onRevise={handleRevise}
+          onGenerateAssessments={handleGenerateAssessments}
+          onRegenerateQuiz={handleRegenerateQuiz}
+          onRegenerateAssignment={handleRegenerateAssignment}
         />
       </div>
     </div>

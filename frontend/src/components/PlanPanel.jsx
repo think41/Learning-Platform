@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { CheckCircle, XCircle, ChevronDown, ChevronRight, BookOpen, Clock, Users, RotateCcw, Check } from 'lucide-react'
+import { CheckCircle, XCircle, ChevronDown, ChevronRight, BookOpen, Clock, Users, RotateCcw, Check,
+         FileQuestion, ClipboardList, Sparkles, RefreshCw } from 'lucide-react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
@@ -163,7 +164,7 @@ function Module({ mod, defaultOpen = false }) {
 
 function PlanView({ plan, loading, onApprovePlan, readOnly = false }) {
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col flex-1 min-h-0">
       <div className="px-5 py-4 border-b border-gray-100">
         <p className="text-xs font-medium text-brand-600 uppercase tracking-wide mb-1">Course Plan</p>
         <h2 className="text-lg font-bold text-gray-900">{plan.title}</h2>
@@ -241,10 +242,15 @@ function PlanView({ plan, loading, onApprovePlan, readOnly = false }) {
 
 // ── Section review (content state) ───────────────────────────────────────────
 
-function SectionReview({ currentSection, briefIndex, totalBriefs, loading, onApproveSection, onRevise }) {
-  const [revising, setRevising]   = useState(false)
+function SectionReview({ currentSection, sections, briefIndex, totalBriefs, loading, onApproveSection, onRevise }) {
+  const [revising, setRevising]     = useState(false)
   const [reviseNote, setReviseNote] = useState('')
+  const [viewingId, setViewingId]   = useState(null)   // null = the section under review
   const progress = totalBriefs > 0 ? ((briefIndex) / totalBriefs) * 100 : 0
+
+  const approved   = Object.values(sections || {})
+  const onCurrent  = !viewingId
+  const viewing    = onCurrent ? currentSection : (sections[viewingId] || currentSection)
 
   const submitRevise = () => {
     if (!reviseNote.trim()) return
@@ -254,7 +260,7 @@ function SectionReview({ currentSection, briefIndex, totalBriefs, loading, onApp
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col flex-1 min-h-0">
       {/* Progress */}
       <div className="px-5 py-3 border-b border-gray-100 space-y-2">
         <div className="flex justify-between items-center text-xs text-gray-500">
@@ -277,100 +283,322 @@ function SectionReview({ currentSection, briefIndex, totalBriefs, loading, onApp
       )}
 
       {currentSection && (
-        <>
-          {/* Section meta */}
-          <div className="px-5 py-3 border-b border-gray-100">
-            <p className="text-xs text-brand-600 font-medium uppercase tracking-wide mb-0.5">
-              Section {briefIndex + 1} of {totalBriefs} · Module {currentSection.module_number}
-            </p>
-            <h3 className="text-base font-bold text-gray-900">{currentSection.title}</h3>
-            <div className="mt-2">
-              <CriticReport critic={currentSection.critic} />
+        <div className="flex flex-col flex-1 min-h-0">
+          {/* Top section nav */}
+          <div className="flex gap-2 px-4 py-2.5 border-b border-gray-100 overflow-x-auto bg-gray-50 shrink-0">
+            {approved.map((sec, i) => (
+              <button
+                key={sec.id}
+                onClick={() => { setViewingId(sec.id); setRevising(false) }}
+                title={sec.title}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium
+                  whitespace-nowrap shrink-0 border transition-colors
+                  ${viewingId === sec.id
+                    ? 'bg-brand-600 text-white border-brand-600'
+                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'}`}
+              >
+                <CheckCircle size={12} className={viewingId === sec.id ? 'text-white' : 'text-green-500'} />
+                <span className="max-w-[120px] truncate">{i + 1}. {sec.title}</span>
+              </button>
+            ))}
+            {/* Current (under review) */}
+            <button
+              onClick={() => { setViewingId(null); setRevising(false) }}
+              title={currentSection.title}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium
+                whitespace-nowrap shrink-0 border transition-colors
+                ${onCurrent
+                  ? 'bg-amber-500 text-white border-amber-500'
+                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'}`}
+            >
+              <RotateCcw size={12} className={onCurrent ? 'text-white' : 'text-amber-500'} />
+              <span className="max-w-[120px] truncate">{approved.length + 1}. {currentSection.title}</span>
+            </button>
+          </div>
+
+          {/* Main content */}
+          <div className="flex flex-col flex-1 min-h-0">
+            {/* Section meta */}
+            <div className="px-5 py-3 border-b border-gray-100">
+              <div className="flex items-center gap-2 mb-0.5">
+                <p className="text-xs text-brand-600 font-medium uppercase tracking-wide">
+                  Module {viewing.module_number}
+                </p>
+                {onCurrent ? (
+                  <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-200 font-medium">
+                    Under review
+                  </span>
+                ) : (
+                  <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-50 text-green-600 border border-green-200 font-medium">
+                    Approved · read-only
+                  </span>
+                )}
+              </div>
+              <h3 className="text-base font-bold text-gray-900">{viewing.title}</h3>
+              <div className="mt-2">
+                <CriticReport critic={viewing.critic} />
+              </div>
             </div>
-          </div>
 
-          {/* Section content */}
-          <div className="flex-1 overflow-y-auto px-5 py-4">
-            <MarkdownView content={currentSection.content} />
-          </div>
+            {/* Section content */}
+            <div className="flex-1 overflow-y-auto px-5 py-4">
+              <MarkdownView content={viewing.content} />
+            </div>
 
-          {/* Actions */}
-          <div className="px-5 py-4 border-t border-gray-100 space-y-2">
-            {!revising ? (
-              <div className="flex gap-2">
-                <button
-                  onClick={onApproveSection}
-                  disabled={loading}
-                  className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-green-600 text-white
-                    rounded-xl font-medium text-sm hover:bg-green-700 transition-colors
-                    disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Check size={15} />
-                  Approve Section
-                </button>
-                <button
-                  onClick={() => setRevising(true)}
-                  disabled={loading}
-                  className="flex items-center gap-1.5 px-4 py-2.5 border border-gray-300 text-gray-700
-                    rounded-xl font-medium text-sm hover:bg-gray-50 transition-colors
-                    disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <RotateCcw size={14} />
-                  Revise
-                </button>
+            {/* Actions — only for the section under review */}
+            {onCurrent ? (
+              <div className="px-5 py-4 border-t border-gray-100 space-y-2">
+                {!revising ? (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={onApproveSection}
+                      disabled={loading}
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-green-600 text-white
+                        rounded-xl font-medium text-sm hover:bg-green-700 transition-colors
+                        disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Check size={15} />
+                      Approve Section
+                    </button>
+                    <button
+                      onClick={() => setRevising(true)}
+                      disabled={loading}
+                      className="flex items-center gap-1.5 px-4 py-2.5 border border-gray-300 text-gray-700
+                        rounded-xl font-medium text-sm hover:bg-gray-50 transition-colors
+                        disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <RotateCcw size={14} />
+                      Revise
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <textarea
+                      rows={2}
+                      value={reviseNote}
+                      onChange={e => setReviseNote(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault()
+                          submitRevise()
+                        }
+                      }}
+                      placeholder="Describe what to change… (Enter to submit, Shift+Enter for new line)"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none
+                        focus:outline-none focus:ring-2 focus:ring-brand-500"
+                      autoFocus
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={submitRevise}
+                        disabled={!reviseNote.trim() || loading}
+                        className="flex-1 py-2 bg-brand-600 text-white rounded-xl text-sm font-medium
+                          hover:bg-brand-700 transition-colors disabled:opacity-50"
+                      >
+                        Submit Revision
+                      </button>
+                      <button
+                        onClick={() => { setRevising(false); setReviseNote('') }}
+                        className="px-4 py-2 border border-gray-200 text-gray-600 rounded-xl text-sm hover:bg-gray-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
-              <div className="space-y-2">
-                <textarea
-                  rows={2}
-                  value={reviseNote}
-                  onChange={e => setReviseNote(e.target.value)}
-                  placeholder="Describe what to change…"
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none
-                    focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  autoFocus
-                />
-                <div className="flex gap-2">
-                  <button
-                    onClick={submitRevise}
-                    disabled={!reviseNote.trim() || loading}
-                    className="flex-1 py-2 bg-brand-600 text-white rounded-xl text-sm font-medium
-                      hover:bg-brand-700 transition-colors disabled:opacity-50"
-                  >
-                    Submit Revision
-                  </button>
-                  <button
-                    onClick={() => { setRevising(false); setReviseNote('') }}
-                    className="px-4 py-2 border border-gray-200 text-gray-600 rounded-xl text-sm hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
-                </div>
+              <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between">
+                <span className="text-xs text-gray-400">This section is approved and locked.</span>
+                <button
+                  onClick={() => setViewingId(null)}
+                  className="text-xs font-medium text-brand-600 hover:underline"
+                >
+                  Back to current section →
+                </button>
               </div>
             )}
           </div>
-        </>
+        </div>
       )}
+    </div>
+  )
+}
+
+// ── Quiz renderer ─────────────────────────────────────────────────────────────
+
+function QuizView({ quiz, onRegenerate, loading }) {
+  const [revealed, setRevealed] = useState({})
+  return (
+    <div className="max-w-3xl">
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div>
+          <p className="text-xs text-brand-600 font-medium mb-1">Module {quiz.module_number} · Quiz</p>
+          <h2 className="text-2xl font-bold text-gray-900">{quiz.module_title}</h2>
+          <p className="text-sm text-gray-500 mt-1">{quiz.questions.length} questions</p>
+        </div>
+        {onRegenerate && (
+          <button
+            onClick={onRegenerate}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg
+              text-xs font-medium hover:bg-gray-50 disabled:opacity-50 shrink-0"
+          >
+            <RefreshCw size={13} /> Regenerate
+          </button>
+        )}
+      </div>
+
+      <div className="space-y-4">
+        {quiz.questions.map((q, i) => (
+          <div key={i} className="border border-gray-200 rounded-xl p-4">
+            <div className="flex items-start gap-2">
+              <span className="w-6 h-6 rounded-full bg-brand-100 text-brand-700 text-xs font-bold flex items-center justify-center shrink-0">
+                {i + 1}
+              </span>
+              <div className="flex-1">
+                <p className="text-sm font-medium text-gray-800">{q.question}</p>
+                <span className="inline-block mt-1 text-[10px] uppercase tracking-wide text-gray-400">
+                  {q.type === 'multiple_choice' ? 'Multiple choice' : 'Short answer'}
+                </span>
+              </div>
+            </div>
+
+            {q.options?.length > 0 && (
+              <ul className="mt-3 ml-8 space-y-1.5">
+                {q.options.map((opt, j) => {
+                  const isAnswer = revealed[i] && opt === q.answer
+                  return (
+                    <li key={j}
+                      className={`text-sm px-3 py-1.5 rounded-lg border
+                        ${isAnswer
+                          ? 'bg-green-50 border-green-300 text-green-800 font-medium'
+                          : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
+                      {String.fromCharCode(65 + j)}. {opt}
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+
+            <div className="ml-8 mt-3">
+              <button
+                onClick={() => setRevealed(r => ({ ...r, [i]: !r[i] }))}
+                className="text-xs font-medium text-brand-600 hover:underline"
+              >
+                {revealed[i] ? 'Hide answer' : 'Show answer'}
+              </button>
+              {revealed[i] && (
+                <div className="mt-2 text-sm bg-green-50 border border-green-200 rounded-lg p-3">
+                  <p className="text-green-800"><strong>Answer:</strong> {q.answer}</p>
+                  {q.explanation && <p className="text-gray-600 mt-1 text-xs">{q.explanation}</p>}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Final assignment renderer ──────────────────────────────────────────────────
+
+function AssignmentView({ assignment, onRegenerate, loading }) {
+  const Section = ({ title, items }) => items?.length > 0 && (
+    <div className="mb-5">
+      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{title}</p>
+      <ul className="space-y-1.5">
+        {items.map((it, i) => (
+          <li key={i} className="flex gap-2 text-sm text-gray-700">
+            <span className="text-brand-400 mt-0.5">•</span>{it}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+  return (
+    <div className="max-w-3xl">
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div>
+          <p className="text-xs text-brand-600 font-medium mb-1">Final Assignment · Capstone</p>
+          <h2 className="text-2xl font-bold text-gray-900">{assignment.title}</h2>
+          {assignment.estimated_hours > 0 && (
+            <span className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+              <Clock size={12} />~{assignment.estimated_hours}h
+            </span>
+          )}
+        </div>
+        {onRegenerate && (
+          <button
+            onClick={onRegenerate}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg
+              text-xs font-medium hover:bg-gray-50 disabled:opacity-50 shrink-0"
+          >
+            <RefreshCw size={13} /> Regenerate
+          </button>
+        )}
+      </div>
+
+      {assignment.overview && (
+        <p className="text-sm text-gray-600 leading-relaxed mb-5">{assignment.overview}</p>
+      )}
+      <Section title="Tasks" items={assignment.tasks} />
+      <Section title="Deliverables" items={assignment.deliverables} />
+      <Section title="Evaluation criteria" items={assignment.evaluation_criteria} />
     </div>
   )
 }
 
 // ── Course view (done state) ──────────────────────────────────────────────────
 
-function CourseView({ plan, sections }) {
-  // Build module → section mapping from the plan + sections store
+function CourseView({ plan, sections, quizzes, finalAssignment, loading, onRegenerateQuiz, onRegenerateAssignment }) {
   const allSections = Object.values(sections)
+  const quizByModule = Object.fromEntries((quizzes || []).map(q => [q.module_number, q]))
   const [selectedId, setSelectedId] = useState(allSections[0]?.id || null)
-  const selected = sections[selectedId]
 
-  // Group by module
   const modules = (plan?.modules || []).map(mod => ({
     ...mod,
     sectionItems: allSections.filter(s => s.module_number === mod.number),
   }))
 
+  // Resolve what to render based on the selected key
+  let body = null
+  if (selectedId === 'assignment' && finalAssignment) {
+    body = <AssignmentView assignment={finalAssignment} loading={loading} onRegenerate={onRegenerateAssignment} />
+  } else if (typeof selectedId === 'string' && selectedId.startsWith('quiz-')) {
+    const n = Number(selectedId.slice(5))
+    const quiz = quizByModule[n]
+    body = quiz ? <QuizView quiz={quiz} loading={loading} onRegenerate={() => onRegenerateQuiz?.(n)} /> : null
+  } else if (sections[selectedId]) {
+    const sel = sections[selectedId]
+    body = (
+      <>
+        <p className="text-xs text-brand-600 font-medium mb-1">Module {sel.module_number}</p>
+        <h2 className="text-2xl font-bold text-gray-900 mb-4">{sel.title}</h2>
+        {sel.critic && <CriticReport critic={sel.critic} />}
+        <div className="mt-5"><MarkdownView content={sel.content} /></div>
+      </>
+    )
+  }
+
+  const navItem = (key, label, icon, color) => (
+    <button
+      key={key}
+      onClick={() => setSelectedId(key)}
+      className={`w-full text-left px-4 py-2 text-xs flex items-center gap-2 transition-colors
+        ${selectedId === key
+          ? 'bg-brand-50 text-brand-700 border-r-2 border-brand-600'
+          : 'text-gray-600 hover:bg-gray-100'}`}
+    >
+      {icon}
+      <span className="truncate">{label}</span>
+    </button>
+  )
+
   return (
-    <div className="flex h-full">
+    <div className="flex flex-1 min-h-0">
       {/* Sidebar nav */}
       <div className="w-56 border-r border-gray-200 overflow-y-auto shrink-0 bg-gray-50">
         <div className="p-4 border-b border-gray-200">
@@ -383,68 +611,93 @@ function CourseView({ plan, sections }) {
               <p className="px-4 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                 Module {mod.number}: {mod.title}
               </p>
-              {mod.sectionItems.map(sec => (
-                <button
-                  key={sec.id}
-                  onClick={() => setSelectedId(sec.id)}
-                  className={`w-full text-left px-4 py-2 text-xs flex items-center gap-2 transition-colors
-                    ${selectedId === sec.id
-                      ? 'bg-brand-50 text-brand-700 border-r-2 border-brand-600'
-                      : 'text-gray-600 hover:bg-gray-100'}`}
-                >
-                  <CheckCircle size={12} className="text-green-500 shrink-0" />
-                  <span className="truncate">{sec.title}</span>
-                </button>
-              ))}
-              {mod.sectionItems.length === 0 && (
-                <p className="px-4 py-1 text-xs text-gray-400 italic">No sections generated</p>
+              {mod.sectionItems.map(sec =>
+                navItem(sec.id, sec.title, <CheckCircle size={12} className="text-green-500 shrink-0" />)
               )}
+              {quizByModule[mod.number] &&
+                navItem(`quiz-${mod.number}`, 'Quiz',
+                  <FileQuestion size={12} className="text-purple-500 shrink-0" />)}
             </div>
           ))}
+
+          {finalAssignment && (
+            <div className="mt-2 border-t border-gray-200 pt-2">
+              {navItem('assignment', 'Final Assignment',
+                <ClipboardList size={12} className="text-amber-500 shrink-0" />)}
+            </div>
+          )}
         </div>
       </div>
 
       {/* Content */}
-      {selected ? (
-        <div className="flex-1 overflow-y-auto px-8 py-6">
-          <div className="max-w-3xl">
-            <p className="text-xs text-brand-600 font-medium mb-1">
-              Module {selected.module_number}
-            </p>
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">{selected.title}</h2>
-            {selected.critic && <CriticReport critic={selected.critic} />}
-            <div className="mt-5">
-              <MarkdownView content={selected.content} />
-            </div>
-          </div>
-        </div>
+      {body ? (
+        <div className="flex-1 overflow-y-auto px-8 py-6">{body}</div>
       ) : (
         <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
-          Select a section to read
+          Select an item to view
         </div>
       )}
     </div>
   )
 }
 
+// ── Assessment gate (assessment state) ─────────────────────────────────────────
+
+function AssessmentGate({ loading, onGenerate }) {
+  return (
+    <div className="flex flex-col items-center justify-center flex-1 text-center px-10">
+      <div className="w-16 h-16 rounded-2xl bg-purple-50 flex items-center justify-center mb-4">
+        <Sparkles size={28} className="text-purple-500" />
+      </div>
+      <h2 className="text-lg font-bold text-gray-900 mb-2">All content is ready</h2>
+      <p className="text-sm text-gray-500 leading-relaxed mb-6 max-w-sm">
+        Generate the assessments next — one quiz per module plus a single capstone
+        final assignment covering the whole course.
+      </p>
+      <button
+        onClick={onGenerate}
+        disabled={loading}
+        className="px-6 py-3 bg-brand-600 text-white rounded-xl font-semibold text-sm
+          hover:bg-brand-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed
+          flex items-center gap-2"
+      >
+        {loading
+          ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Generating…</>
+          : <><Sparkles size={16} /> Generate Assessments</>}
+      </button>
+    </div>
+  )
+}
+
 // ── Root PlanPanel ────────────────────────────────────────────────────────────
 
-export default function PlanPanel({ sessionData, loading, onApprovePlan, onApproveSection, onRevise }) {
-  const { state, plan, sections, current_section, brief_index, total_briefs } = sessionData
+export default function PlanPanel({ sessionData, loading, onApprovePlan, onApproveSection, onRevise,
+                                    onGenerateAssessments, onRegenerateQuiz, onRegenerateAssignment }) {
+  const { state, plan, sections, current_section, brief_index, total_briefs, quizzes, final_assignment } = sessionData
   const [contentTab, setContentTab] = useState('section')
 
   return (
-    <div className="flex-1 flex flex-col bg-white overflow-hidden">
+    <div className="flex-1 flex flex-col bg-cream overflow-hidden">
       {state === 'done' ? (
         <>
           <div className="px-5 py-3 border-b border-gray-100 bg-green-50 flex items-center gap-2">
             <CheckCircle size={16} className="text-green-600" />
             <span className="text-sm font-medium text-green-700">
-              Course complete — {Object.keys(sections).length} sections approved
+              Course complete — {Object.keys(sections).length} sections, {(quizzes || []).length} quizzes
             </span>
           </div>
-          <CourseView plan={plan} sections={sections} />
+          <CourseView
+            plan={plan}
+            sections={sections}
+            quizzes={quizzes}
+            finalAssignment={final_assignment}
+            loading={loading}
+            onRegenerateQuiz={onRegenerateQuiz}
+            onRegenerateAssignment={onRegenerateAssignment}
+          />
         </>
+      ) : state === 'assessment' ? (
+        <AssessmentGate loading={loading} onGenerate={onGenerateAssessments} />
       ) : state === 'content' ? (
         <>
           {/* Tab bar */}
@@ -472,6 +725,7 @@ export default function PlanPanel({ sessionData, loading, onApprovePlan, onAppro
           {contentTab === 'section' ? (
             <SectionReview
               currentSection={current_section}
+              sections={sections}
               briefIndex={brief_index}
               totalBriefs={total_briefs}
               loading={loading}
@@ -479,9 +733,7 @@ export default function PlanPanel({ sessionData, loading, onApprovePlan, onAppro
               onRevise={onRevise}
             />
           ) : (
-            <div className="flex-1 overflow-y-auto">
-              <PlanView plan={plan} loading={false} onApprovePlan={null} readOnly />
-            </div>
+            <PlanView plan={plan} loading={false} onApprovePlan={null} readOnly />
           )}
         </>
       ) : plan ? (

@@ -7,14 +7,14 @@ import os
 import asyncio
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict
+from typing import Dict, List
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from agent import PlanningAgent
-from generator import generate_section, run_critic
+from generator import generate_section, run_critic, generate_quiz, generate_final_assignment
 from store import PlanStore, SectionStore
 from models import GeneratedSection, SectionStatus
 from parser import extract_json
@@ -24,9 +24,11 @@ import json as _json
 
 
 def clean_reply(text: str) -> str:
-    """Strip raw JSON blocks from the LLM reply so chat only shows prose."""
+    """Strip raw JSON blocks and internal meta tags from the LLM reply."""
     # Remove ```json ... ``` fences
     cleaned = re.sub(r'```json\s*.*?\s*```', '', text, flags=re.DOTALL)
+    # Remove internal control tags the model sometimes echoes back
+    cleaned = re.sub(r'\[\s*(CONSTRAINT|NOTE)\b[^\]]*\]', '', cleaned, flags=re.IGNORECASE)
     # Remove bare { ... } if it parses as a plan (contains "modules" key)
     start = cleaned.find('{')
     end   = cleaned.rfind('}')
@@ -54,6 +56,7 @@ executor = ThreadPoolExecutor(max_workers=4)
 STATE_CLARIFYING   = "clarifying"
 STATE_PLAN_DRAFTED = "plan_drafted"
 STATE_CONTENT      = "content"
+STATE_ASSESSMENT   = "assessment"
 STATE_DONE         = "done"
 
 sessions: Dict[str, dict] = {}
@@ -71,6 +74,8 @@ def new_session() -> dict:
         "briefs":             [],
         "brief_index":        0,
         "current_section":    None,
+        "quizzes":            [],
+        "final_assignment":   None,
     }
 
 
@@ -102,6 +107,9 @@ def serialize(session: dict) -> dict:
         "current_section": _sec_dict(cs) if cs else None,
         "brief_index":     session["brief_index"],
         "total_briefs":    len(session["briefs"]),
+        "uploaded_files":  session.get("uploaded_files", []),
+        "quizzes":         session.get("quizzes", []),
+        "final_assignment": session.get("final_assignment"),
     }
 
 
@@ -127,6 +135,33 @@ def _build_section(session: dict) -> GeneratedSection:
         id=sid, module_number=b.module_number, title=b.title,
         content=content, concepts_introduced=concepts,
         status=SectionStatus.CRITIC_REVIEWED, critic_report=critic,
+    )
+
+
+# ── Assessment helpers ─────────────────────────────────────────────────────────
+
+def _module_payload(session: dict, module):
+    """Gather the approved section content + concepts for one module."""
+    ss = session["section_store"]
+    secs = [s for s in ss.sections.values() if s.module_number == module.number]
+    content = "\n\n".join(f"### {s.title}\n{s.content}" for s in secs)
+    concepts = []
+    for s in secs:
+        for c in s.concepts_introduced:
+            if c not in concepts:
+                concepts.append(c)
+    return content, concepts
+
+
+def _build_quiz(session: dict, module) -> dict:
+    content, concepts = _module_payload(session, module)
+    return generate_quiz(session["plan_store"].plan, module.number, module.title, content, concepts)
+
+
+def _build_final_assignment(session: dict) -> dict:
+    ss = session["section_store"]
+    return generate_final_assignment(
+        session["plan_store"].plan, ss.get_summary(), ss.concepts_introduced
     )
 
 
@@ -165,9 +200,12 @@ async def _do_approve_section(session_id: str) -> dict:
     session["brief_index"] += 1
 
     if session["brief_index"] >= len(session["briefs"]):
-        session["state"]           = STATE_DONE
+        session["state"]           = STATE_ASSESSMENT
         session["current_section"] = None
-        return {"reply": "All sections approved! Your course is ready. 🎉", **serialize(session)}
+        return {
+            "reply": "All sections approved! 🎉 Next, generate the assessments — one quiz per module plus a final assignment.",
+            **serialize(session),
+        }
 
     section = await run(_build_section, session)
     session["current_section"] = section
@@ -216,12 +254,9 @@ async def create_session():
     sid     = str(uuid.uuid4())
     session = new_session()
     sessions[sid] = session
-
-    reply = await run(
-        session["planning_agent"].chat,
-        "Hello! Briefly introduce yourself and ask what course the user wants to build.",
-    )
-    return {"session_id": sid, "reply": clean_reply(reply), **serialize(session)}
+    # No opening message — the hero greets the user, and the AI responds to
+    # the user's first actual message.
+    return {"session_id": sid, **serialize(session)}
 
 
 class ChatBody(BaseModel):
@@ -263,6 +298,12 @@ async def chat(sid: str, body: ChatBody):
             **serialize(session),
         }
 
+    elif state == STATE_ASSESSMENT:
+        return {
+            "reply": "All sections are done. Use **Generate Assessments** on the right to create the module quizzes and final assignment.",
+            **serialize(session),
+        }
+
     elif state == STATE_DONE:
         return {"reply": "Your course is complete! Use the Export button to save it.", **serialize(session)}
 
@@ -283,6 +324,50 @@ async def approve_section(sid: str):
     return await _do_approve_section(sid)
 
 
+@app.post("/session/{sid}/generate-assessments")
+async def generate_assessments(sid: str):
+    if sid not in sessions:
+        raise HTTPException(404, "Session not found")
+    session = sessions[sid]
+    if not session["section_store"].sections:
+        raise HTTPException(400, "No course content to build assessments from")
+
+    modules = session["plan_store"].plan.modules
+    quizzes = []
+    for m in modules:
+        quizzes.append(await run(_build_quiz, session, m))
+    session["quizzes"] = quizzes
+    session["final_assignment"] = await run(_build_final_assignment, session)
+    session["state"] = STATE_DONE
+    return {
+        "reply": f"Generated {len(quizzes)} module quiz(zes) and a final assignment. 🎓",
+        **serialize(session),
+    }
+
+
+@app.post("/session/{sid}/regenerate-quiz/{module_number}")
+async def regenerate_quiz(sid: str, module_number: int):
+    if sid not in sessions:
+        raise HTTPException(404, "Session not found")
+    session = sessions[sid]
+    module = next((m for m in session["plan_store"].plan.modules if m.number == module_number), None)
+    if not module:
+        raise HTTPException(404, f"Module {module_number} not found")
+    quiz = await run(_build_quiz, session, module)
+    session["quizzes"] = [quiz if q.get("module_number") == module_number else q
+                          for q in session.get("quizzes", [])]
+    return {"reply": f"Regenerated the quiz for Module {module_number}.", **serialize(session)}
+
+
+@app.post("/session/{sid}/regenerate-assignment")
+async def regenerate_assignment(sid: str):
+    if sid not in sessions:
+        raise HTTPException(404, "Session not found")
+    session = sessions[sid]
+    session["final_assignment"] = await run(_build_final_assignment, session)
+    return {"reply": "Regenerated the final assignment.", **serialize(session)}
+
+
 class ReviseBody(BaseModel):
     feedback: str
 
@@ -294,40 +379,51 @@ async def revise(sid: str, body: ReviseBody):
     return await _do_revise(sid, body.feedback)
 
 
+def _extract_upload(file_bytes: bytes, filename: str):
+    suffix = os.path.splitext(filename or "")[1]
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(file_bytes)
+        tmp_path = tmp.name
+    try:
+        return extract_text(tmp_path)
+    finally:
+        os.unlink(tmp_path)
+
+
 @app.post("/session/{sid}/upload")
-async def upload(sid: str, file: UploadFile = File(...)):
+async def upload(sid: str, files: List[UploadFile] = File(...), message: str = Form("")):
     if sid not in sessions:
         raise HTTPException(404, "Session not found")
     session = sessions[sid]
 
-    suffix = os.path.splitext(file.filename or "")[1]
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        tmp.write(await file.read())
-        tmp_path = tmp.name
-
-    try:
-        text, filename, truncated = extract_text(tmp_path)
+    accepted, any_truncated = [], False
+    for file in files:
+        raw = await file.read()
+        text, _filename, truncated = await run(_extract_upload, raw, file.filename)
+        any_truncated = any_truncated or truncated
         session["reference_material"].append(text)
+        session.setdefault("uploaded_files", []).append(file.filename)
+        accepted.append((file.filename, text))
 
-        if session["state"] in (STATE_CLARIFYING, STATE_PLAN_DRAFTED):
-            session["planning_agent"].queue_upload(text, file.filename)
-            reply = await run(
-                session["planning_agent"].chat,
-                f"I just uploaded '{file.filename}'. Acknowledge it and factor it into the plan.",
-            )
-            data = extract_json(reply)
-            if data and "modules" in data:
-                session["plan_store"].approve(data)
-                session["state"] = STATE_PLAN_DRAFTED
-            return {"reply": clean_reply(reply), "truncated": truncated, **serialize(session)}
+    names = ", ".join(f"'{n}'" for n, _ in accepted)
+    msg = (message or "").strip()
 
-        return {
-            "reply": f"'{file.filename}' added as reference material for content generation.",
-            "truncated": truncated,
-            **serialize(session),
-        }
-    finally:
-        os.unlink(tmp_path)
+    if session["state"] in (STATE_CLARIFYING, STATE_PLAN_DRAFTED):
+        for name, text in accepted:
+            session["planning_agent"].queue_upload(text, name)
+        # All queued file contents are auto-prepended to whatever the user typed.
+        prompt = msg if msg else f"I just uploaded {names}. Acknowledge and factor into the plan."
+        reply = await run(session["planning_agent"].chat, prompt)
+        data = extract_json(reply)
+        if data and "modules" in data:
+            session["plan_store"].approve(data)
+            session["state"] = STATE_PLAN_DRAFTED
+        return {"reply": clean_reply(reply), "truncated": any_truncated, **serialize(session)}
+
+    note = f"{names} added as reference material for content generation."
+    if msg:
+        note += f" (Note: '{msg}' — reference files are applied during section generation.)"
+    return {"reply": note, "truncated": any_truncated, **serialize(session)}
 
 
 @app.get("/session/{sid}/export")
@@ -348,4 +444,6 @@ async def export_session(sid: str):
             }
             for s_id, s in ss.sections.items()
         },
+        "quizzes":          session.get("quizzes", []),
+        "final_assignment": session.get("final_assignment"),
     }

@@ -2,6 +2,10 @@ from typing import List
 
 MAX_CLARIFICATION_ROUNDS = 2
 
+# Hard limits on plan structure (enforced in the prompt and again in store.py)
+MAX_MODULES = 4
+MAX_SUBMODULES_PER_MODULE = 2
+
 # ─── Plan schema shown to the planning agent ────────────────────────────────
 
 PLAN_SCHEMA = """{
@@ -47,14 +51,15 @@ PLANNING_SYSTEM = f"""You are an expert Learning Experience Designer. Help a Lea
 3. Accept field-level edits and regenerate the plan on request.
 
 ## CLARIFICATION STRATEGY
-Ask ALL questions in ONE numbered list — never spread across multiple messages. Key things to clarify:
-- Who is the target audience (age, role, experience level)?
-- Skill level goal (beginner / intermediate / advanced)?
-- Total course duration?
-- Topics to focus on or exclude?
-- Do they have reference materials to upload?
+Keep it tight. Open with at most ONE short sentence, then ask your questions as ONE concise numbered markdown list — never spread across multiple messages. No long preamble, no repeating the user back. Each question should be a single short line. Cover:
+1. Target audience (role / experience level)?
+2. Skill level goal (beginner / intermediate / advanced)?
+3. Total course duration?
+4. Topics to focus on or exclude?
+5. Any reference materials to upload?
 
-A [CONSTRAINT] tag in user messages tells you how many rounds remain. When rounds = 0, you MUST output the full plan JSON immediately, making reasonable assumptions for any missing info.
+## INTERNAL CONTROL TAGS
+User messages may contain bracketed control tags like [CONSTRAINT: ...] or [NOTE: ...]. These are internal instructions for you ONLY — obey them but NEVER repeat, quote, or display them in your reply. A [CONSTRAINT] tag tells you how many rounds remain; when rounds = 0 you MUST output the full plan JSON immediately, making reasonable assumptions for any gaps.
 
 ## PLAN FORMAT
 Output the complete plan inside a ```json block using EXACTLY this schema.
@@ -64,10 +69,11 @@ STRICT RULES:
 - Do NOT add: budget, timeline, resources, activities, assessments, content, implementation details, or any other field.
 - This is a learning structure only — modules, timing, concepts, objectives. That is all.
 - Content and assessments are generated in later phases, not here.
+- HARD LIMIT: at most {MAX_MODULES} modules total, and at most {MAX_SUBMODULES_PER_MODULE} submodules per module. Never exceed these. If the topic is large, prioritize and consolidate to fit within these limits.
 
 {PLAN_SCHEMA}
 
-After outputting JSON, say: "Does this look good? Request any changes, or type **approve plan** to proceed."
+After outputting the JSON, add one short, warm closing line in plain conversational language — invite the user to review the plan and either suggest changes or approve it when they're ready. Do NOT mention typing commands, keywords, buttons, or JSON. Keep it natural, e.g. "Take a look and let me know if you'd like to adjust anything — otherwise we can move on to building out the content." Vary the wording.
 
 ## EDITING
 When the user requests changes, apply them and output the full updated plan JSON again. Same strict rules apply.
@@ -221,5 +227,98 @@ Output ONLY this JSON:
   "out_of_order_concepts": [],
   "style_violations": [],
   "passed": true
+}}
+```"""
+
+
+# ─── Quiz prompt (one per module) ────────────────────────────────────────────
+
+QUIZ_QUESTIONS = 5
+
+def build_quiz_prompt(plan, module_number: int, module_title: str, module_content: str, concepts: List[str]) -> str:
+    style_block = format_style_block(plan.style)
+    concepts_block = ", ".join(concepts) or "the concepts taught in this module"
+    return f"""You are an expert assessment designer. Write a quiz for ONE module of a course, based strictly on what that module taught.
+
+## COURSE
+Title: {plan.title} | Audience: {plan.target_audience} | Level: {plan.skill_level}
+
+{style_block}
+
+## MODULE {module_number}: {module_title}
+Concepts covered: {concepts_block}
+
+## MODULE CONTENT (the only material the quiz may test)
+{module_content}
+
+## YOUR TASK
+Write exactly {QUIZ_QUESTIONS} questions that test understanding of THIS module only.
+- Mix of "multiple_choice" (4 options each) and "short_answer".
+- For multiple_choice, "answer" must be the exact text of the correct option.
+- For short_answer, "answer" is a concise model answer; "options" must be an empty list.
+- Only test material actually present in the module content above. Do not invent facts.
+- Match the audience reading level and tone.
+
+Output ONLY this JSON (no text before or after):
+```json
+{{
+  "module_number": {module_number},
+  "module_title": "{module_title}",
+  "questions": [
+    {{
+      "question": "...",
+      "type": "multiple_choice",
+      "options": ["A", "B", "C", "D"],
+      "answer": "the correct option text",
+      "explanation": "why this is correct"
+    }},
+    {{
+      "question": "...",
+      "type": "short_answer",
+      "options": [],
+      "answer": "model answer",
+      "explanation": "what a good answer should include"
+    }}
+  ]
+}}
+```"""
+
+
+# ─── Final assignment prompt (one per course) ────────────────────────────────
+
+def build_final_assignment_prompt(plan, sections_summary: str, concepts: List[str]) -> str:
+    style_block = format_style_block(plan.style)
+    objectives = "\n".join(f"  - {o}" for o in plan.learning_objectives) or "  - (derive from the course)"
+    concepts_block = ", ".join(concepts) or "the concepts taught across the course"
+    return f"""You are an expert instructional designer. Design ONE capstone final assignment for the whole course.
+
+## COURSE
+Title: {plan.title} | Audience: {plan.target_audience} | Level: {plan.skill_level}
+Description: {plan.description}
+
+## COURSE LEARNING OBJECTIVES
+{objectives}
+
+{style_block}
+
+## ALL CONCEPTS TAUGHT
+{concepts_block}
+
+## SECTIONS COVERED
+{sections_summary}
+
+## YOUR TASK
+Design a single, cohesive capstone assignment that requires applying concepts from across the WHOLE course
+(not just one module). It should be realistic, achievable for the stated audience, and tied to the learning objectives.
+
+Output ONLY this JSON (no text before or after):
+```json
+{{
+  "title": "assignment title",
+  "overview": "1-2 paragraph description of the assignment and its goal",
+  "tasks": ["concrete step 1", "concrete step 2", "concrete step 3"],
+  "deliverables": ["what the learner submits"],
+  "evaluation_criteria": ["how it will be graded"],
+  "estimated_hours": 4
 }}
 ```"""
