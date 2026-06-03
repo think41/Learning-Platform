@@ -152,3 +152,14 @@ class SectionStore:
             f"  m{s.module_number} | {s.title} | [{s.status.value}]"
             for s in self.sections.values()
         )
+
+    def approved_summaries_block(self) -> str:
+        """Approved-section summaries, formatted for the next section's prompt."""
+        approved = [s for s in self.sections.values()
+                    if s.status == SectionStatus.APPROVED and s.summary]
+        if not approved:
+            return ""
+        return "\n\n".join(
+            f"### m{s.module_number} — {s.title}\n{s.summary}"
+            for s in approved
+        )

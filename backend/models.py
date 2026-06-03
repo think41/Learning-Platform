@@ -41,6 +41,7 @@ class GeneratedSection:
     concepts_introduced: List[str]
     status: SectionStatus = SectionStatus.DRAFT
     critic_report: Optional[CriticReport] = None
+    summary: str = ""
 
 
 @dataclass

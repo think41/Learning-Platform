@@ -14,7 +14,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from agent import PlanningAgent
-from generator import generate_section, run_critic, generate_quiz, generate_final_assignment
+from generator import (generate_section, run_critic, generate_quiz,
+                       generate_final_assignment, summarize_section)
+import db
 from store import PlanStore, SectionStore
 from models import GeneratedSection, SectionStatus
 from parser import extract_json
@@ -42,6 +44,7 @@ def clean_reply(text: str) -> str:
     return cleaned.strip()
 
 app = FastAPI(title="Learning Platform API")
+db.init_db()
 
 app.add_middleware(
     CORSMiddleware,
@@ -87,6 +90,7 @@ def _sec_dict(s) -> dict:
         "content":              s.content,
         "concepts_introduced":  s.concepts_introduced,
         "status":               s.status.value,
+        "summary":              s.summary,
         "critic": {
             "flagged_claims":        s.critic_report.flagged_claims,
             "out_of_order_concepts": s.critic_report.out_of_order_concepts,
@@ -127,7 +131,7 @@ def _build_section(session: dict) -> GeneratedSection:
     b      = briefs[idx]
 
     content, concepts = generate_section(
-        ps.plan, b, ss.concepts_introduced, ss.get_summary(), ref
+        ps.plan, b, ss.concepts_introduced, ss.approved_summaries_block(), ref
     )
     sid    = f"m{b.module_number}_s{b.submodule_index}"
     critic = run_critic(content, b, ss.concepts_introduced, ps.plan)
@@ -161,7 +165,10 @@ def _build_quiz(session: dict, module) -> dict:
 def _build_final_assignment(session: dict) -> dict:
     ss = session["section_store"]
     return generate_final_assignment(
-        session["plan_store"].plan, ss.get_summary(), ss.concepts_introduced
+        session["plan_store"].plan,
+        ss.get_summary(),
+        ss.concepts_introduced,
+        ss.approved_summaries_block(),
     )
 
 
@@ -194,6 +201,11 @@ async def _do_approve_section(session_id: str) -> dict:
     cs      = session.get("current_section")
     if not cs:
         return {"reply": "No section to approve.", **serialize(session)}
+
+    briefs = session["briefs"]
+    idx    = session["brief_index"]
+    module_title = briefs[idx].module_title if idx < len(briefs) else cs.title
+    cs.summary = await run(summarize_section, cs.title, module_title, cs.content)
 
     session["section_store"].add(cs)
     session["section_store"].approve_section(cs.id)
@@ -232,7 +244,7 @@ async def _do_revise(session_id: str, feedback: str) -> dict:
         content, concepts = generate_section(
             session["plan_store"].plan, b,
             session["section_store"].concepts_introduced,
-            session["section_store"].get_summary(), aug,
+            session["section_store"].approved_summaries_block(), aug,
         )
         sid2   = f"m{b.module_number}_s{b.submodule_index}"
         critic = run_critic(content, b, session["section_store"].concepts_introduced, session["plan_store"].plan)
@@ -447,3 +459,42 @@ async def export_session(sid: str):
         "quizzes":          session.get("quizzes", []),
         "final_assignment": session.get("final_assignment"),
     }
+
+
+@app.post("/session/{sid}/publish")
+async def publish_session(sid: str):
+    if sid not in sessions:
+        raise HTTPException(404, "Session not found")
+    session = sessions[sid]
+    if session["state"] != STATE_DONE:
+        raise HTTPException(400, "Course is not finished — finish content + assessments before publishing")
+
+    ps = session["plan_store"]
+    ss = session["section_store"]
+    plan = ps._raw or {}
+    sections = {sid_: _sec_dict(s) for sid_, s in ss.sections.items()}
+
+    course_id = db.save_course(
+        title=plan.get("title", "Untitled course"),
+        description=plan.get("description", ""),
+        total_duration_hours=float(plan.get("total_duration_hours") or 0),
+        plan=plan,
+        sections=sections,
+        quizzes=session.get("quizzes", []),
+        final_assignment=session.get("final_assignment") or {},
+    )
+    db.write_manuscript(course_id, plan.get("title", "Untitled course"), sections)
+    return {"course_id": course_id, "title": plan.get("title", "Untitled course")}
+
+
+@app.get("/courses")
+async def list_courses():
+    return {"courses": db.list_courses()}
+
+
+@app.get("/courses/{course_id}")
+async def get_course(course_id: str):
+    course = db.get_course(course_id)
+    if not course:
+        raise HTTPException(404, "Course not found")
+    return course

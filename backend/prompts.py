@@ -6,6 +6,11 @@ MAX_CLARIFICATION_ROUNDS = 2
 MAX_MODULES = 4
 MAX_SUBMODULES_PER_MODULE = 2
 
+# Section length controls
+SECTION_WORD_CAP = 1000       # hard cap; prompt-enforced + verified in code
+SECTION_WORD_GRACE = 100      # allow up to cap+grace before forcing a trim
+SUMMARY_WORD_TARGET = 100     # target length for per-section forward-context summary
+
 # ─── Plan schema shown to the planning agent ────────────────────────────────
 
 PLAN_SCHEMA = """{
@@ -123,7 +128,7 @@ def build_section_prompt(
     plan,
     brief,
     concepts_so_far: List[str],
-    sections_summary: str,
+    prior_summaries: str,
     reference_material: str = "",
 ) -> str:
     concepts_block = (
@@ -131,6 +136,7 @@ def build_section_prompt(
         if concepts_so_far
         else "  (none — this is the first section)"
     )
+    summaries_block = prior_summaries.strip() or "(none — this is the first section)"
     ref_block = (
         f"\n## REFERENCE MATERIAL (treat as primary source)\n{reference_material}"
         if reference_material
@@ -151,8 +157,9 @@ Course-wide prior knowledge: {', '.join(plan.assumed_prior_knowledge) or 'none s
 Do NOT re-explain these. Treat them as known.
 {concepts_block}
 
-## SECTIONS GENERATED SO FAR
-{sections_summary}
+## SUMMARIES OF PRIOR APPROVED SECTIONS
+Use these for narrative continuity, consistent vocabulary, and to avoid repeating examples or explanations already given. Build on what's here.
+{summaries_block}
 {ref_block}
 
 ## YOUR TASK — generate content for this section ONLY
@@ -164,7 +171,8 @@ Concepts to introduce: {', '.join(brief.concepts_to_cover) or 'derive from modul
 Learning objectives: {', '.join(brief.learning_objectives) or 'derive from module context'}
 
 Rules:
-- Write thorough, well-structured markdown content.
+- HARD CAP: section content must be at most {SECTION_WORD_CAP} words. Be tight. Cut filler before adding more.
+- Write well-structured markdown content.
 - Match tone and vocabulary rules exactly.
 - Do NOT reference concepts that will only appear in later sections.
 - Do NOT re-explain concepts from the "already introduced" list.
@@ -175,6 +183,49 @@ Output ONLY this JSON (no text before or after the block):
 {{
   "content": "full markdown content of the section",
   "concepts_introduced": ["concept1", "concept2"]
+}}
+```"""
+
+
+# ─── Summary prompt (per-section, used as forward context) ───────────────────
+
+def build_summary_prompt(section_title: str, module_title: str, section_content: str) -> str:
+    return f"""Summarize the course section below for use as forward context when later sections are generated.
+
+## SECTION
+Module : {module_title}
+Title  : {section_title}
+
+## CONTENT
+{section_content}
+
+## YOUR TASK
+Write a single dense paragraph of about {SUMMARY_WORD_TARGET} words covering:
+- The key concepts taught (named exactly as the section named them).
+- Any worked example(s) used, briefly.
+- Any vocabulary or analogies the section relied on that later sections should stay consistent with.
+
+No headings, no bullet lists, no preamble. Just the paragraph."""
+
+
+# ─── Trim prompt (when a section exceeds the word cap) ───────────────────────
+
+def build_trim_prompt(section_content: str, current_words: int) -> str:
+    return f"""The course section below is {current_words} words. Trim it to at most {SECTION_WORD_CAP} words.
+
+## RULES
+- Preserve all key concepts, code examples, and the overall structure / headings.
+- Remove filler, repetition, and over-elaboration. Tighten prose.
+- Do NOT drop entire concepts or examples.
+- Keep the same markdown formatting.
+
+## CONTENT TO TRIM
+{section_content}
+
+Output ONLY this JSON (no text before or after):
+```json
+{{
+  "content": "trimmed markdown content"
 }}
 ```"""
 
@@ -233,11 +284,26 @@ Output ONLY this JSON:
 
 # ─── Quiz prompt (one per module) ────────────────────────────────────────────
 
-QUIZ_QUESTIONS = 5
+QUIZ_QUESTIONS = 4
 
-def build_quiz_prompt(plan, module_number: int, module_title: str, module_content: str, concepts: List[str]) -> str:
+def build_quiz_prompt(
+    plan,
+    module_number: int,
+    module_title: str,
+    module_content: str,
+    concepts: List[str],
+    prior_issues: List[str] | None = None,
+) -> str:
     style_block = format_style_block(plan.style)
     concepts_block = ", ".join(concepts) or "the concepts taught in this module"
+    fix_block = ""
+    if prior_issues:
+        issues_lines = "\n".join(f"  - {i}" for i in prior_issues)
+        fix_block = (
+            f"\n## PREVIOUS ATTEMPT FAILED VALIDATION — FIX THESE ISSUES\n"
+            f"{issues_lines}\n"
+            f"Regenerate the quiz so that NONE of the above issues recur.\n"
+        )
     return f"""You are an expert assessment designer. Write a quiz for ONE module of a course, based strictly on what that module taught.
 
 ## COURSE
@@ -250,12 +316,18 @@ Concepts covered: {concepts_block}
 
 ## MODULE CONTENT (the only material the quiz may test)
 {module_content}
-
+{fix_block}
 ## YOUR TASK
 Write exactly {QUIZ_QUESTIONS} questions that test understanding of THIS module only.
-- Mix of "multiple_choice" (4 options each) and "short_answer".
-- For multiple_choice, "answer" must be the exact text of the correct option.
-- For short_answer, "answer" is a concise model answer; "options" must be an empty list.
+
+STRICT RULES:
+- EVERY question must be "multiple_choice" with exactly 4 options. Do NOT produce "short_answer" or any other type.
+- "answer" must be the EXACT text of one of the options (character-for-character).
+- Exactly ONE option is correct. No other option may be a paraphrase, synonym, or restatement of the correct answer.
+- All distractors must be defensibly wrong — plausible but verifiably incorrect against the module content.
+- All 4 options must be unique non-empty strings.
+- Every question must have a non-empty "explanation".
+- Across the {QUIZ_QUESTIONS} questions, cover at least 2 different concepts from the list.
 - Only test material actually present in the module content above. Do not invent facts.
 - Match the audience reading level and tone.
 
@@ -271,13 +343,6 @@ Output ONLY this JSON (no text before or after):
       "options": ["A", "B", "C", "D"],
       "answer": "the correct option text",
       "explanation": "why this is correct"
-    }},
-    {{
-      "question": "...",
-      "type": "short_answer",
-      "options": [],
-      "answer": "model answer",
-      "explanation": "what a good answer should include"
     }}
   ]
 }}
@@ -286,10 +351,16 @@ Output ONLY this JSON (no text before or after):
 
 # ─── Final assignment prompt (one per course) ────────────────────────────────
 
-def build_final_assignment_prompt(plan, sections_summary: str, concepts: List[str]) -> str:
+def build_final_assignment_prompt(
+    plan,
+    sections_summary: str,
+    concepts: List[str],
+    prior_summaries: str = "",
+) -> str:
     style_block = format_style_block(plan.style)
     objectives = "\n".join(f"  - {o}" for o in plan.learning_objectives) or "  - (derive from the course)"
     concepts_block = ", ".join(concepts) or "the concepts taught across the course"
+    summaries_block = prior_summaries.strip() or "(no detailed summaries available)"
     return f"""You are an expert instructional designer. Design ONE capstone final assignment for the whole course.
 
 ## COURSE
@@ -304,8 +375,12 @@ Description: {plan.description}
 ## ALL CONCEPTS TAUGHT
 {concepts_block}
 
-## SECTIONS COVERED
+## SECTIONS COVERED (structure)
 {sections_summary}
+
+## WHAT EACH SECTION ACTUALLY TAUGHT
+Ground the assignment in what was actually covered. Do NOT assume content beyond what appears below.
+{summaries_block}
 
 ## YOUR TASK
 Design a single, cohesive capstone assignment that requires applying concepts from across the WHOLE course

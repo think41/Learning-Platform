@@ -51,3 +51,12 @@ export const regenerateAssignment = (sid) =>
 
 export const exportSession = (sid) =>
   req(`${BASE}/${sid}/export`)
+
+export const publishSession = (sid) =>
+  req(`${BASE}/${sid}/publish`, { method: 'POST' })
+
+export const listCourses = () =>
+  req('/courses')
+
+export const getCourse = (courseId) =>
+  req(`/courses/${courseId}`)

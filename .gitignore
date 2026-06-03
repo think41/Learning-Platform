@@ -13,3 +13,8 @@ frontend/dist/
 
 # Editor / tooling
 .jetro/
+
+private-docs/
+
+# SQLite + manuscript artifacts (published courses)
+backend/data/
