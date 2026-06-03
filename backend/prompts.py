@@ -321,14 +321,11 @@ Concepts covered: {concepts_block}
 Write exactly {QUIZ_QUESTIONS} questions that test understanding of THIS module only.
 
 STRICT RULES:
-- Question types: "multiple_choice" (exactly 4 options) and "short_answer" (empty options list).
-- Include AT LEAST 1 multiple_choice and AT LEAST 1 short_answer question.
-- For multiple_choice:
-  - "answer" must be the EXACT text of one of the options (character-for-character).
-  - Exactly ONE option is correct. No other option may be a paraphrase, synonym, or restatement of the correct answer.
-  - All distractors must be defensibly wrong — plausible but verifiably incorrect against the module content.
-  - All 4 options must be unique non-empty strings.
-- For short_answer: "options" must be []; "answer" is a concise model answer.
+- EVERY question must be "multiple_choice" with exactly 4 options. Do NOT produce "short_answer" or any other type.
+- "answer" must be the EXACT text of one of the options (character-for-character).
+- Exactly ONE option is correct. No other option may be a paraphrase, synonym, or restatement of the correct answer.
+- All distractors must be defensibly wrong — plausible but verifiably incorrect against the module content.
+- All 4 options must be unique non-empty strings.
 - Every question must have a non-empty "explanation".
 - Across the {QUIZ_QUESTIONS} questions, cover at least 2 different concepts from the list.
 - Only test material actually present in the module content above. Do not invent facts.
@@ -346,13 +343,6 @@ Output ONLY this JSON (no text before or after):
       "options": ["A", "B", "C", "D"],
       "answer": "the correct option text",
       "explanation": "why this is correct"
-    }},
-    {{
-      "question": "...",
-      "type": "short_answer",
-      "options": [],
-      "answer": "model answer",
-      "explanation": "what a good answer should include"
     }}
   ]
 }}

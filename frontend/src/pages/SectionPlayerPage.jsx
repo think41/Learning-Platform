@@ -55,7 +55,6 @@ export default function SectionPlayerPage() {
   const section    = course.sections?.[step.id]
   const done       = isStepDone(step, progress)
   const nextStep   = steps[currentIndex + 1]
-  const nextIsQuiz = nextStep?.kind === 'quiz'
 
   const handleNext = () => {
     const updated = markSectionComplete(courseId, step.id)

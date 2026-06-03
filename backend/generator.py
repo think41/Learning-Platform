@@ -164,29 +164,20 @@ def _validate_quiz(data: dict, expected_n: int) -> list[str]:
         if not answer_str:  issues.append(f"Q{i}: empty answer.")
         if not explanation: issues.append(f"Q{i}: missing explanation.")
 
-        types_seen.add(qtype)
+        if qtype != "multiple_choice":
+            issues.append(f"Q{i}: every question must be 'multiple_choice', got {qtype!r}.")
+            continue
 
-        if qtype == "multiple_choice":
-            if not isinstance(options, list) or len(options) != 4:
-                issues.append(f"Q{i}: multiple_choice must have exactly 4 options.")
-                continue
-            stripped = [o.strip() if isinstance(o, str) else "" for o in options]
-            if any(not o for o in stripped):
-                issues.append(f"Q{i}: options contain empty strings.")
-            if len(set(stripped)) != len(stripped):
-                issues.append(f"Q{i}: options contain duplicates.")
-            if answer_str and answer_str not in stripped:
-                issues.append(f"Q{i}: answer {answer_str!r} is not an exact match of any option.")
-        elif qtype == "short_answer":
-            if options:
-                issues.append(f"Q{i}: short_answer must have an empty options list.")
-        else:
-            issues.append(f"Q{i}: type must be 'multiple_choice' or 'short_answer', got {qtype!r}.")
-
-    if questions and "multiple_choice" not in types_seen:
-        issues.append("Quiz must include at least one multiple_choice question.")
-    if questions and "short_answer" not in types_seen:
-        issues.append("Quiz must include at least one short_answer question.")
+        if not isinstance(options, list) or len(options) != 4:
+            issues.append(f"Q{i}: multiple_choice must have exactly 4 options.")
+            continue
+        stripped = [o.strip() if isinstance(o, str) else "" for o in options]
+        if any(not o for o in stripped):
+            issues.append(f"Q{i}: options contain empty strings.")
+        if len(set(stripped)) != len(stripped):
+            issues.append(f"Q{i}: options contain duplicates.")
+        if answer_str and answer_str not in stripped:
+            issues.append(f"Q{i}: answer {answer_str!r} is not an exact match of any option.")
 
     return issues
 

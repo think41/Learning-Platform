@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, BookOpen, Clock, Layers, CheckCircle, Lock, Play } from 'lucide-react'
 import Logo from '../components/Logo'
