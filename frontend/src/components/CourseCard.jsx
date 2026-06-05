@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
-import { BookOpen, Clock, CheckCircle } from 'lucide-react'
+import { BookOpen, Clock, CheckCircle, Share2 } from 'lucide-react'
 
-export default function CourseCard({ course, to, completed = false }) {
+export default function CourseCard({ course, to, completed = false, onShare }) {
   const inner = (
     <>
       <div className="absolute top-0 left-6 right-6 h-1 bg-gradient-to-r from-brand-400 to-brand-600
@@ -51,6 +51,17 @@ export default function CourseCard({ course, to, completed = false }) {
             transition-opacity">
             Open →
           </span>
+        )}
+        {onShare && (
+          <button
+            type="button"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onShare(course) }}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium
+              text-brand-700 bg-brand-50 border border-brand-100
+              hover:bg-brand-100 transition-colors"
+          >
+            <Share2 size={12} /> Share
+          </button>
         )}
       </div>
     </>

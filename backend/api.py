@@ -19,6 +19,7 @@ from agent import PlanningAgent
 from generator import (generate_section, run_critic, generate_quiz,
                        generate_final_assignment, summarize_section)
 import db
+from email_sender import send_share_email, EmailNotConfigured, EmailSendError
 from store import PlanStore, SectionStore
 from models import GeneratedSection, SectionStatus
 from parser import extract_json
@@ -503,8 +504,45 @@ async def get_course(course_id: str):
     return course
 
 
+class ShareCourseBody(BaseModel):
+    to_email:    str
+    note:        str = ""
+    course_url:  str  # full public URL the recipient should open
+
+
+_EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+@app.post("/courses/{course_id}/share")
+async def share_course(course_id: str, body: ShareCourseBody):
+    to_email = body.to_email.strip()
+    if not _EMAIL_RE.match(to_email):
+        raise HTTPException(400, "Invalid recipient email address")
+
+    course = db.get_course(course_id)
+    if not course:
+        raise HTTPException(404, "Course not found")
+
+    try:
+        await asyncio.get_event_loop().run_in_executor(
+            None,
+            send_share_email,
+            to_email,
+            course["title"],
+            body.course_url,
+            body.note or "",
+        )
+    except EmailNotConfigured as e:
+        raise HTTPException(503, str(e))
+    except EmailSendError as e:
+        raise HTTPException(502, str(e))
+
+    return {"ok": True, "to": to_email}
+
+
 # ── Serve the built frontend (production / Cloud Run) ─────────────────────────
-# In dev, Vite serves the UI on :5173 and proxies API calls back to :8000.
+# Keep this block LAST: the SPA catch-all GET would shadow any route registered
+# after it. In dev, Vite serves the UI on :5173 and proxies API calls to :8000.
 # In prod, the Docker build copies frontend/dist into /app/static and FastAPI
 # serves it directly — single container, single port.
 _STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
