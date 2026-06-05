@@ -7,8 +7,9 @@ Env vars (all required):
   AWS_SMTP_USERNAME    SES SMTP credentials (NOT IAM keys). Generate in
   AWS_SMTP_PASSWORD    SES console → SMTP settings → Create SMTP credentials.
   AWS_SES_SMTP_HOST    (default: email-smtp.us-west-2.amazonaws.com)
-  AWS_SES_SMTP_PORT    (default: 587; set to 2587 if deploying to GCP Cloud Run,
-                       which blocks outbound port 587)
+  AWS_SES_SMTP_PORT    (default: 2587 — works on Cloud Run, AWS, and locally.
+                       Override to 587 only on networks that block non-standard
+                       outbound ports.)
 """
 import logging
 import os
@@ -50,7 +51,7 @@ def send_share_email(
         )
 
     host = os.getenv("AWS_SES_SMTP_HOST", "email-smtp.us-west-2.amazonaws.com")
-    port = int(os.getenv("AWS_SES_SMTP_PORT", "587"))
+    port = int(os.getenv("AWS_SES_SMTP_PORT", "2587"))
 
     msg = MIMEMultipart("alternative")
     msg["From"]    = sender
