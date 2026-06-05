@@ -6,8 +6,9 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-DB_DIR  = os.path.join(os.path.dirname(__file__), "data")
-DB_PATH = os.path.join(DB_DIR, "app.db")
+DB_DIR    = os.path.join(os.path.dirname(__file__), "data")
+DB_PATH   = os.path.join(DB_DIR, "app.db")
+SEED_DIR  = os.path.join(DB_DIR, "seeds")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS courses (
@@ -34,6 +35,42 @@ def _connect() -> sqlite3.Connection:
 def init_db() -> None:
     with _connect() as conn:
         conn.executescript(SCHEMA)
+    _load_seeds_if_empty()
+
+
+def _load_seeds_if_empty() -> None:
+    """If the courses table is empty, insert any JSON files in data/seeds/.
+
+    Designed for ephemeral filesystems (e.g. Cloud Run): every cold start
+    re-seeds demo courses so the library is never empty.
+    """
+    if not os.path.isdir(SEED_DIR):
+        return
+    with _connect() as conn:
+        count = conn.execute("SELECT COUNT(*) AS n FROM courses").fetchone()["n"]
+        if count > 0:
+            return
+        for fname in sorted(os.listdir(SEED_DIR)):
+            if not fname.endswith(".json"):
+                continue
+            try:
+                with open(os.path.join(SEED_DIR, fname), encoding="utf-8") as f:
+                    c = json.load(f)
+                conn.execute(
+                    """INSERT INTO courses
+                       (id, title, description, total_duration_hours,
+                        plan_json, sections_json, quizzes_json, final_assignment_json, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        c["id"], c["title"], c.get("description", ""),
+                        float(c.get("total_duration_hours") or 0),
+                        json.dumps(c["plan"]), json.dumps(c["sections"]),
+                        json.dumps(c["quizzes"]), json.dumps(c.get("final_assignment") or {}),
+                        c.get("created_at") or datetime.utcnow().isoformat(timespec="seconds") + "Z",
+                    ),
+                )
+            except Exception as e:
+                print(f"[seed] skipped {fname}: {e}")
 
 
 def save_course(
