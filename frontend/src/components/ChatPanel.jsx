@@ -6,9 +6,9 @@ import Logo from './Logo'
 
 const EXAMPLES = [
   'Intro to Python for absolute beginners',
-  'Digital marketing crash course',
-  'Machine learning for product managers',
-  'Personal finance 101',
+  'JavaScript fundamentals for web development',
+  'Build REST APIs with Node.js and Express',
+  'Git and GitHub essentials for developers',
 ]
 
 // Compact markdown styling tuned for chat bubbles
