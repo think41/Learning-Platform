@@ -8,7 +8,8 @@ from llm import get_llm
 from models import CriticReport, ApprovedPlan, SectionBrief
 from prompts import (build_section_prompt, build_critic_prompt,
                      build_quiz_prompt, build_final_assignment_prompt,
-                     build_summary_prompt, build_trim_prompt,
+                     build_summary_prompt, build_slides_only_prompt,
+                     build_trim_prompt,
                      SECTION_WORD_CAP, SECTION_WORD_GRACE)
 from parser import extract_json
 
@@ -69,18 +70,85 @@ def generate_section(
     return raw, []
 
 
-def summarize_section(section_title: str, module_title: str, section_content: str) -> str:
-    """~100-word dense paragraph used as forward context for later section generation."""
+def _validate_slides(slides) -> list[str]:
+    """Structural check for a slide deck. Empty list = passed."""
+    issues: list[str] = []
+    if not isinstance(slides, list):
+        return ["'slides' must be a list."]
+    if not (6 <= len(slides) <= 10):
+        issues.append(f"Deck must have 6 to 10 slides, got {len(slides)}.")
+    for i, s in enumerate(slides, 1):
+        if not isinstance(s, dict):
+            issues.append(f"Slide {i}: not a JSON object.")
+            continue
+        title = (s.get("title") or "").strip()
+        if not title:
+            issues.append(f"Slide {i}: empty title.")
+        has_bullets = "bullets" in s
+        has_code    = "code" in s
+        if has_bullets == has_code:
+            issues.append(f"Slide {i}: must have exactly one of 'bullets' or 'code'.")
+            continue
+        if has_bullets:
+            bullets = s.get("bullets")
+            if not isinstance(bullets, list):
+                issues.append(f"Slide {i}: 'bullets' must be a list.")
+                continue
+            if not (3 <= len(bullets) <= 5):
+                issues.append(f"Slide {i}: bullets must be 3 to 5, got {len(bullets)}.")
+            if any(not (isinstance(b, str) and b.strip()) for b in bullets):
+                issues.append(f"Slide {i}: contains empty or non-string bullets.")
+        else:
+            code = s.get("code")
+            if not (isinstance(code, str) and code.strip()):
+                issues.append(f"Slide {i}: 'code' must be a non-empty string.")
+    return issues
+
+
+def summarize_section(section_title: str, module_title: str, section_content: str) -> Tuple[str, list]:
+    """
+    Returns (summary_text, slides_list).
+    One LLM call produces both artifacts. On slide-validation failure we do one slides-only retry.
+    Fail-soft: if everything fails, returns the best summary we have and slides=[].
+    """
     prompt = build_summary_prompt(section_title, module_title, section_content)
     raw = get_llm().complete(
         [
-            {"role": "system", "content": "You are a concise summarizer. Output only the paragraph — no preamble, no markdown."},
+            {"role": "system", "content": "You are a concise summarizer and slide designer. Output ONLY the requested JSON — no preamble."},
             {"role": "user", "content": prompt},
         ],
         temperature=0.3,
-        max_tokens=400,
+        max_tokens=2048,
     )
-    return raw.strip()
+    data    = extract_json(raw) or {}
+    summary = (data.get("summary") or "").strip()
+    slides  = data.get("slides") or []
+
+    # Summary is load-bearing. If JSON parse failed entirely, fall back to raw text.
+    if not summary:
+        summary = raw.strip()
+
+    issues = _validate_slides(slides)
+    if not issues:
+        return summary, slides
+
+    # One slides-only retry.
+    retry_prompt = build_slides_only_prompt(section_title, module_title, section_content, issues)
+    retry_raw = get_llm().complete(
+        [
+            {"role": "system", "content": "You are a slide designer. Output ONLY the requested JSON — no preamble."},
+            {"role": "user", "content": retry_prompt},
+        ],
+        temperature=0.3,
+        max_tokens=2048,
+    )
+    retry_data   = extract_json(retry_raw) or {}
+    retry_slides = retry_data.get("slides") or []
+    if not _validate_slides(retry_slides):
+        return summary, retry_slides
+
+    # Fail-soft: keep the summary, drop the deck.
+    return summary, []
 
 
 def run_critic(

@@ -190,7 +190,9 @@ Output ONLY this JSON (no text before or after the block):
 # ─── Summary prompt (per-section, used as forward context) ───────────────────
 
 def build_summary_prompt(section_title: str, module_title: str, section_content: str) -> str:
-    return f"""Summarize the course section below for use as forward context when later sections are generated.
+    return f"""You will produce TWO artifacts from the course section below:
+(1) a forward-context SUMMARY used when later sections are generated, and
+(2) a learner-facing SLIDE DECK shown alongside the full content.
 
 ## SECTION
 Module : {module_title}
@@ -199,13 +201,87 @@ Title  : {section_title}
 ## CONTENT
 {section_content}
 
-## YOUR TASK
-Write a single dense paragraph of about {SUMMARY_WORD_TARGET} words covering:
+## ARTIFACT 1 — SUMMARY
+A single dense paragraph, about {SUMMARY_WORD_TARGET} words, covering:
 - The key concepts taught (named exactly as the section named them).
 - Any worked example(s) used, briefly.
-- Any vocabulary or analogies the section relied on that later sections should stay consistent with.
+- Any vocabulary or analogies the section relied on so later sections stay consistent.
+No headings, no bullets — just the paragraph.
 
-No headings, no bullet lists, no preamble. Just the paragraph."""
+## ARTIFACT 2 — SLIDE DECK
+Produce between 6 and 10 slides. The deck is a PARALLEL teaching path: a learner who
+reads ONLY the slides (never the prose) should still come away with the section's key
+ideas. Do NOT just chop the prose into fragments.
+
+Each slide is one of:
+  {{ "title": "...", "bullets": ["...", "..."] }}              — 3 to 5 bullets
+  {{ "title": "...", "code": "...", "language": "python" }}    — for code-centric slides
+
+Rules:
+- First slide  = intro: what this section teaches and why it matters.
+- Last  slide  = key takeaways: 3 to 5 bullets a learner should walk away with.
+- Bullets are FULL THOUGHTS, not sentence fragments.
+- Each slide stands alone. Do not write "as we saw" or "continuing from before".
+- Bullets are plain text — no markdown syntax, no leading dashes, no backticks for code (use a code slide instead for multi-line snippets; short inline tokens are fine).
+- Include at most ONE code slide unless the section is genuinely code-heavy.
+- Keep the total deck length between 6 and 10 slides REGARDLESS of how long the section is.
+
+### Bad slide (do not imitate)
+{{ "title": "Variables", "bullets": ["Variables are", "Used in Python", "Important"] }}
+
+### Good slide
+{{ "title": "Variables name and reuse values",
+   "bullets": [
+     "A variable is a label pointing at a value in memory",
+     "Create one with name = value — no declaration keyword needed",
+     "You can reassign at any time; Python re-points the label",
+     "Choose names that describe the value, not its type"
+   ] }}
+
+## OUTPUT FORMAT
+Output ONLY this JSON, nothing before or after:
+```json
+{{
+  "summary": "...the paragraph...",
+  "slides": [
+    {{ "title": "...", "bullets": ["...", "...", "..."] }}
+  ]
+}}
+```"""
+
+
+def build_slides_only_prompt(section_title: str, module_title: str, section_content: str, prior_issues: list) -> str:
+    issues_block = "\n".join(f"- {i}" for i in prior_issues)
+    return f"""Your previous slide deck for the section below had structural issues. Regenerate ONLY the deck.
+
+## ISSUES TO FIX
+{issues_block}
+
+## SECTION
+Module : {module_title}
+Title  : {section_title}
+
+## CONTENT
+{section_content}
+
+## RULES (same as before — re-read carefully)
+- Produce 6 to 10 slides.
+- Each slide is one of:
+    {{ "title": "...", "bullets": ["...", "...", "..."] }}              — 3 to 5 bullets, full thoughts
+    {{ "title": "...", "code": "...", "language": "python" }}            — for code-centric slides
+- First slide = intro; last slide = key takeaways.
+- Bullets are plain text — no markdown, no leading dashes.
+- Each slide stands alone.
+
+## OUTPUT FORMAT
+Output ONLY this JSON, nothing before or after:
+```json
+{{
+  "slides": [
+    {{ "title": "...", "bullets": ["...", "...", "..."] }}
+  ]
+}}
+```"""
 
 
 # ─── Trim prompt (when a section exceeds the word cap) ───────────────────────
