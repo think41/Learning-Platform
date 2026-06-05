@@ -60,3 +60,13 @@ export const listCourses = () =>
 
 export const getCourse = (courseId) =>
   req(`/courses/${courseId}`)
+
+export const shareCourse = (courseId, toEmail, note = '') =>
+  req(`/courses/${courseId}/share`, {
+    method: 'POST',
+    body: JSON.stringify({
+      to_email:   toEmail,
+      note,
+      course_url: `${window.location.origin}/learn/${courseId}`,
+    }),
+  })

@@ -3,12 +3,14 @@ import { Link } from 'react-router-dom'
 import { BookOpen, Plus } from 'lucide-react'
 import Logo from '../components/Logo'
 import CourseCard from '../components/CourseCard'
+import ShareCourseModal from '../components/ShareCourseModal'
 import { listCourses } from '../api'
 
 export default function GeneratedCoursesPage() {
-  const [courses, setCourses] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError]     = useState(null)
+  const [courses, setCourses]     = useState([])
+  const [loading, setLoading]     = useState(true)
+  const [error, setError]         = useState(null)
+  const [shareTarget, setShareTarget] = useState(null)
 
   useEffect(() => {
     listCourses()
@@ -57,10 +59,23 @@ export default function GeneratedCoursesPage() {
 
         {!loading && courses.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {courses.map(c => <CourseCard key={c.id} course={c} />)}
+            {courses.map(c => (
+              <CourseCard
+                key={c.id}
+                course={c}
+                onShare={setShareTarget}
+              />
+            ))}
           </div>
         )}
       </main>
+
+      <ShareCourseModal
+        open={!!shareTarget}
+        onClose={() => setShareTarget(null)}
+        courseId={shareTarget?.id}
+        courseTitle={shareTarget?.title}
+      />
     </div>
   )
 }

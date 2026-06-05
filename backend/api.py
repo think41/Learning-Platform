@@ -17,6 +17,7 @@ from agent import PlanningAgent
 from generator import (generate_section, run_critic, generate_quiz,
                        generate_final_assignment, summarize_section)
 import db
+from email_sender import send_share_email, EmailNotConfigured, EmailSendError
 from store import PlanStore, SectionStore
 from models import GeneratedSection, SectionStatus
 from parser import extract_json
@@ -499,3 +500,39 @@ async def get_course(course_id: str):
     if not course:
         raise HTTPException(404, "Course not found")
     return course
+
+
+class ShareCourseBody(BaseModel):
+    to_email:    str
+    note:        str = ""
+    course_url:  str  # full public URL the recipient should open
+
+
+_EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+@app.post("/courses/{course_id}/share")
+async def share_course(course_id: str, body: ShareCourseBody):
+    to_email = body.to_email.strip()
+    if not _EMAIL_RE.match(to_email):
+        raise HTTPException(400, "Invalid recipient email address")
+
+    course = db.get_course(course_id)
+    if not course:
+        raise HTTPException(404, "Course not found")
+
+    try:
+        await asyncio.get_event_loop().run_in_executor(
+            None,
+            send_share_email,
+            to_email,
+            course["title"],
+            body.course_url,
+            body.note or "",
+        )
+    except EmailNotConfigured as e:
+        raise HTTPException(503, str(e))
+    except EmailSendError as e:
+        raise HTTPException(502, str(e))
+
+    return {"ok": True, "to": to_email}
