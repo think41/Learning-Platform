@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, CheckCircle } from 'lucide-react'
 import LearnerNavbar from '../components/LearnerNavbar'
 import CurriculumSidebar from '../components/CurriculumSidebar'
 import MarkdownView from '../components/MarkdownView'
+import SectionDeck from '../components/SectionDeck'
 import { getCourse } from '../api'
 import {
   readProgress, markSectionComplete, markStarted,
@@ -97,6 +98,10 @@ export default function SectionPlayerPage() {
               )}
             </div>
             <h1 className="text-2xl font-semibold text-gray-900 mb-6">{step.title}</h1>
+
+            {section?.slides?.length > 0 && (
+              <SectionDeck key={sectionId} slides={section.slides} />
+            )}
 
             {section?.content
               ? <MarkdownView content={section.content} />

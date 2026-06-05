@@ -42,6 +42,7 @@ class GeneratedSection:
     status: SectionStatus = SectionStatus.DRAFT
     critic_report: Optional[CriticReport] = None
     summary: str = ""
+    slides: List[dict] = field(default_factory=list)
 
 
 @dataclass

@@ -91,6 +91,7 @@ def _sec_dict(s) -> dict:
         "concepts_introduced":  s.concepts_introduced,
         "status":               s.status.value,
         "summary":              s.summary,
+        "slides":               s.slides,
         "critic": {
             "flagged_claims":        s.critic_report.flagged_claims,
             "out_of_order_concepts": s.critic_report.out_of_order_concepts,
@@ -205,7 +206,7 @@ async def _do_approve_section(session_id: str) -> dict:
     briefs = session["briefs"]
     idx    = session["brief_index"]
     module_title = briefs[idx].module_title if idx < len(briefs) else cs.title
-    cs.summary = await run(summarize_section, cs.title, module_title, cs.content)
+    cs.summary, cs.slides = await run(summarize_section, cs.title, module_title, cs.content)
 
     session["section_store"].add(cs)
     session["section_store"].approve_section(cs.id)
