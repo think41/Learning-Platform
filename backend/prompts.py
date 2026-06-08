@@ -4,10 +4,10 @@ MAX_CLARIFICATION_ROUNDS = 2
 
 # Hard limits on plan structure (enforced in the prompt and again in store.py)
 MAX_MODULES = 4
-MAX_SUBMODULES_PER_MODULE = 2
+MAX_SUBMODULES_PER_MODULE = 3
 
 # Section length controls
-SECTION_WORD_CAP = 1000       # hard cap; prompt-enforced + verified in code
+SECTION_WORD_CAP = 2000       # hard cap; prompt-enforced + verified in code
 SECTION_WORD_GRACE = 100      # allow up to cap+grace before forcing a trim
 SUMMARY_WORD_TARGET = 100     # target length for per-section forward-context summary
 
