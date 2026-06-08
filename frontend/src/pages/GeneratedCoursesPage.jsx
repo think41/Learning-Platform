@@ -72,7 +72,6 @@ export default function GeneratedCoursesPage() {
               <CourseCard
                 key={c.id}
                 course={c}
-                to={`/learn/${c.id}`}
                 onShare={setShareTarget}
               />
             ))}

@@ -7,9 +7,15 @@ MAX_MODULES = 4
 MAX_SUBMODULES_PER_MODULE = 3
 
 # Section length controls
-SECTION_WORD_CAP = 5000       # hard cap; prompt-enforced + verified in code
+SECTION_WORD_CAP = 3000       # hard cap; prompt-enforced + verified in code
 SECTION_WORD_GRACE = 500      # allow up to cap+grace before forcing a trim
 SUMMARY_WORD_TARGET = 500     # target length for per-section forward-context summary
+WORDS_PER_MINUTE = 150        # study-pace constant: converts duration_minutes -> word target
+
+
+def section_word_target(duration_minutes: int) -> int:
+    """Per-section word target derived from planned duration, bounded by the hard cap."""
+    return min(max(duration_minutes, 1) * WORDS_PER_MINUTE, SECTION_WORD_CAP)
 
 # ─── Plan schema shown to the planning agent ────────────────────────────────
 
@@ -75,6 +81,7 @@ STRICT RULES:
 - This is a learning structure only — modules, timing, concepts, objectives. That is all.
 - Content and assessments are generated in later phases, not here.
 - HARD LIMIT: at most {MAX_MODULES} modules total, and at most {MAX_SUBMODULES_PER_MODULE} submodules per module. Never exceed these. If the topic is large, prioritize and consolidate to fit within these limits.
+- DURATION ARITHMETIC (strict): the sum of all submodule `duration_minutes` across every module MUST equal `total_duration_hours * 60` EXACTLY. Each module's `duration_minutes` MUST equal the sum of its own submodules' `duration_minutes`. If the user asks for 4 hours, every submodule.duration_minutes across the plan must sum to exactly 240. Do not approximate — the numbers will be verified, and you will be asked to fix the plan if they do not match.
 
 {PLAN_SCHEMA}
 
@@ -143,6 +150,7 @@ def build_section_prompt(
         else ""
     )
     style_block = format_style_block(plan.style)
+    word_target = section_word_target(brief.duration_minutes)
 
     return f"""You are an expert technical writer creating one section of a structured course.
 
@@ -171,7 +179,8 @@ Concepts to introduce: {', '.join(brief.concepts_to_cover) or 'derive from modul
 Learning objectives: {', '.join(brief.learning_objectives) or 'derive from module context'}
 
 Rules:
-- HARD CAP: section content must be at most {SECTION_WORD_CAP} words. Be tight. Cut filler before adding more.
+- TARGET LENGTH: aim for approximately {word_target} words for this section ({brief.duration_minutes} min × {WORDS_PER_MINUTE} wpm study pace). Stay within ±15% of the target.
+- HARD CAP: never exceed {SECTION_WORD_CAP} words under any circumstance.
 - Write well-structured markdown content.
 - Match tone and vocabulary rules exactly.
 - Do NOT reference concepts that will only appear in later sections.

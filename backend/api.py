@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from agent import PlanningAgent
+from agent import PlanningAgent, verify_plan_durations
 from generator import (generate_section, run_critic, generate_quiz,
                        generate_final_assignment, summarize_section)
 import db
@@ -83,6 +83,32 @@ def new_session() -> dict:
         "quizzes":            [],
         "final_assignment":   None,
     }
+
+
+async def _extract_and_repair_plan(session, reply: str):
+    """
+    Extract plan JSON from `reply`. If duration arithmetic is wrong, run ONE
+    repair pass through the planning agent and re-extract. Returns
+    (final_reply, plan_dict_or_None). Repair never raises — on failure we just
+    accept the original reply and let downstream validators flag it.
+    """
+    data = extract_json(reply)
+    if not data or "modules" not in data:
+        return reply, None
+
+    issues = verify_plan_durations(data)
+    if not issues:
+        return reply, data
+
+    try:
+        fixed_reply = await run(session["planning_agent"].repair_plan_durations, issues)
+        fixed_data  = extract_json(fixed_reply)
+        if fixed_data and "modules" in fixed_data:
+            return fixed_reply, fixed_data
+    except Exception:
+        pass
+
+    return reply, data
 
 
 def _sec_dict(s) -> dict:
@@ -292,9 +318,9 @@ async def chat(sid: str, body: ChatBody):
             return await _do_approve_plan(sid)
 
         reply = await run(session["planning_agent"].chat, msg)
+        reply, data = await _extract_and_repair_plan(session, reply)
 
-        data = extract_json(reply)
-        if data and "modules" in data:
+        if data:
             had = bool(session["section_store"].sections)
             session["plan_store"].approve(data)
             if had:
@@ -430,8 +456,8 @@ async def upload(sid: str, files: List[UploadFile] = File(...), message: str = F
         # All queued file contents are auto-prepended to whatever the user typed.
         prompt = msg if msg else f"I just uploaded {names}. Acknowledge and factor into the plan."
         reply = await run(session["planning_agent"].chat, prompt)
-        data = extract_json(reply)
-        if data and "modules" in data:
+        reply, data = await _extract_and_repair_plan(session, reply)
+        if data:
             session["plan_store"].approve(data)
             session["state"] = STATE_PLAN_DRAFTED
         return {"reply": clean_reply(reply), "truncated": any_truncated, **serialize(session)}
