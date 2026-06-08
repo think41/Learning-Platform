@@ -14,7 +14,7 @@ export default function CourseCard({ course, to, completed = false, onShare, sho
         </span>
       )}
 
-      <div className="flex items-center gap-3 mb-3">
+      <div className={`flex items-center gap-3 mb-3 ${completed ? 'pr-28' : ''}`}>
         <div className="w-10 h-10 rounded-xl bg-brand-50 border border-brand-100
           flex items-center justify-center shrink-0">
           <BookOpen size={18} className="text-brand-600" />

@@ -7,9 +7,9 @@ MAX_MODULES = 4
 MAX_SUBMODULES_PER_MODULE = 3
 
 # Section length controls
-SECTION_WORD_CAP = 3000       # hard cap; prompt-enforced + verified in code
-SECTION_WORD_GRACE = 500      # allow up to cap+grace before forcing a trim
-SUMMARY_WORD_TARGET = 500     # target length for per-section forward-context summary
+SECTION_WORD_CAP = 2000       # hard cap; prompt-enforced + verified in code
+SECTION_WORD_GRACE = 200      # allow up to cap+grace before forcing a trim
+SUMMARY_WORD_TARGET = 250     # target length for per-section forward-context summary
 WORDS_PER_MINUTE = 150        # study-pace constant: converts duration_minutes -> word target
 
 

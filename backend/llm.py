@@ -123,7 +123,11 @@ def get_llm() -> LLMClient:
             f"Unknown LLM_PROVIDER={provider!r}. Valid options: {list(PROVIDER_CONFIGS)}"
         )
     cfg = PROVIDER_CONFIGS[provider]
-    model = os.getenv("LLM_MODEL", cfg["model"])
+    model = (
+        os.getenv(cfg.get("model_env", ""))
+        or os.getenv("LLM_MODEL")
+        or cfg["model"]
+    )
     api_key = os.getenv(cfg["api_key_env"])
     if not api_key:
         raise ValueError(f"{cfg['api_key_env']} not set in .env")
