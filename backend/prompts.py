@@ -7,9 +7,9 @@ MAX_MODULES = 4
 MAX_SUBMODULES_PER_MODULE = 3
 
 # Section length controls
-SECTION_WORD_CAP = 2000       # hard cap; prompt-enforced + verified in code
-SECTION_WORD_GRACE = 100      # allow up to cap+grace before forcing a trim
-SUMMARY_WORD_TARGET = 100     # target length for per-section forward-context summary
+SECTION_WORD_CAP = 5000       # hard cap; prompt-enforced + verified in code
+SECTION_WORD_GRACE = 500      # allow up to cap+grace before forcing a trim
+SUMMARY_WORD_TARGET = 500     # target length for per-section forward-context summary
 
 # ─── Plan schema shown to the planning agent ────────────────────────────────
 

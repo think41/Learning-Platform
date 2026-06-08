@@ -42,10 +42,10 @@ export default function SectionDeck({ slides }) {
 
         {/* deck chrome */}
         <div className="flex items-center justify-between px-5 py-3 bg-gray-900 text-gray-100">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider">
+          {/* <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider">
             <Presentation size={14} className="text-brand-400" />
             Slide deck
-          </div>
+          </div> */}
           <div className="text-xs font-medium text-gray-300 tabular-nums">
             {String(index + 1).padStart(2, '0')} / {String(slides.length).padStart(2, '0')}
           </div>

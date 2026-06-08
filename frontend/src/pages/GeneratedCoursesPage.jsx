@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { BookOpen, Plus } from 'lucide-react'
+import { BookOpen, Plus, GraduationCap } from 'lucide-react'
 import Logo from '../components/Logo'
 import CourseCard from '../components/CourseCard'
 import ShareCourseModal from '../components/ShareCourseModal'
@@ -30,13 +30,22 @@ export default function GeneratedCoursesPage() {
             Generated Courses
           </span>
         </div>
-        <Link
-          to="/course-builder"
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 text-white rounded-lg text-sm font-medium
-            hover:bg-brand-700 transition-colors"
-        >
-          <Plus size={14} /> New Course
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/learn"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-brand-700 border border-brand-200 rounded-lg text-sm font-medium
+              hover:bg-brand-50 transition-colors"
+          >
+            <GraduationCap size={14} /> Learner view
+          </Link>
+          <Link
+            to="/course-builder"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 text-white rounded-lg text-sm font-medium
+              hover:bg-brand-700 transition-colors"
+          >
+            <Plus size={14} /> New Course
+          </Link>
+        </div>
       </nav>
 
       <main className="max-w-5xl pl-8 pr-6 py-6">
@@ -63,6 +72,7 @@ export default function GeneratedCoursesPage() {
               <CourseCard
                 key={c.id}
                 course={c}
+                to={`/learn/${c.id}`}
                 onShare={setShareTarget}
               />
             ))}

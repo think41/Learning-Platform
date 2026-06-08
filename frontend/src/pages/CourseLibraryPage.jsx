@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { BookOpen } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { BookOpen, Sparkles } from 'lucide-react'
 import Logo from '../components/Logo'
 import CourseCard from '../components/CourseCard'
 import { listCourses } from '../api'
@@ -19,7 +20,7 @@ export default function CourseLibraryPage() {
 
   return (
     <div className="min-h-screen bg-cream">
-      <nav className="bg-white border-b border-gray-200 px-6 h-14 flex items-center">
+      <nav className="bg-white border-b border-gray-200 px-6 h-14 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Logo size={32} />
           <span className="font-semibold text-gray-900">CourseBuilder</span>
@@ -28,6 +29,13 @@ export default function CourseLibraryPage() {
             Library
           </span>
         </div>
+        <Link
+          to="/course-builder"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 text-white rounded-lg text-sm font-medium
+            hover:bg-brand-700 transition-colors"
+        >
+          <Sparkles size={14} /> Build a course
+        </Link>
       </nav>
 
       <main className="max-w-5xl pl-8 pr-6 py-6">

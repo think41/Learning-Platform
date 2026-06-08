@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import ChatPanel from './components/ChatPanel'
 import PlanPanel from './components/PlanPanel'
 import Logo from './components/Logo'
@@ -152,6 +152,13 @@ export default function App() {
           {error && (
             <span className="text-xs text-red-500 max-w-xs truncate">{error}</span>
           )}
+          <Link
+            to="/course-builder/generated"
+            className="px-3 py-1.5 bg-white text-gray-700 border border-gray-200 rounded-lg text-sm font-medium
+              hover:bg-gray-50 transition-colors"
+          >
+            Generated courses
+          </Link>
           {sessionData.state === 'done' && (
             <>
               <button
